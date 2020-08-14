@@ -17,7 +17,11 @@ var http = require('http');
 
 var port = normalizePort(process.env.PORT || '3000');
 app.set('port', port);
-app.use(cors());
+app.use(cors({
+  credentials: true,
+  origin: true
+}));
+app.options('*', cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json({ limit: "50mb" }));
 
