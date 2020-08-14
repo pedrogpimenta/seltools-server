@@ -4,6 +4,9 @@
  * Module dependencies.
  */
 
+const bodyParser= require('body-parser');
+const cors = require('cors');
+
 var app = require('../app');
 var debug = require('debug')('seltools-server:server');
 var http = require('http');
@@ -14,6 +17,9 @@ var http = require('http');
 
 var port = normalizePort(process.env.PORT || '3000');
 app.set('port', port);
+app.use(cors());
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json({ limit: "50mb" }));
 
 /**
  * Create HTTP server.
