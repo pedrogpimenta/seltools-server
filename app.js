@@ -33,7 +33,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
         .catch(error => console.error(error))
     })
 
-    // POST new document
+    // PUT document
     app.put('/document/:id', (req, res) => {
       console.log('PUT')
       db.collection('documents').updateOne(
@@ -43,7 +43,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // db.collection('documents').insertOne(req.body)
         .then(result => {
           console.log('document saved')
-          console.log(result)
           return res.send(JSON.stringify({id: ObjectID(req.params.id)}))
         })
         .catch(error => console.error(error))
