@@ -1,4 +1,5 @@
 const express = require('express')
+const cloneDeep = require('lodash/cloneDeep')
 const { MongoClient, ObjectID } = require('mongodb')
 // const MongoClient = require('mongodb').MongoClient
 
@@ -36,16 +37,46 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
     // PUT document
     app.put('/document/:id', (req, res) => {
       console.log('PUT')
-      db.collection('documents').updateOne(
-          { _id: ObjectID(req.params.id) },
-          { $set: req.body },
-        )
-      // db.collection('documents').insertOne(req.body)
-        .then(result => {
-          console.log('document saved')
-          return res.send(JSON.stringify({id: ObjectID(req.params.id)}))
+
+      db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
+        .then(results => {
+          const document = cloneDeep(results[0])
+
+          document.name = req.body.name || document.name
+          document.sharedWith = req.body.sharedWith || document.sharedWith
+
+          if (req.body.files.length < document.files.length) {
+            document.files.splice(req.body.files.length, document.files.length - req.body.files.length)
+          }
+
+          for (let file in req.body.files) {
+            if (document.files.length <= file) document.files.push({})
+
+            document.files[file].id = req.body.files[file].id || document.files[file].id
+            document.files[file].name = req.body.files[file].name || document.files[file].name
+            document.files[file].content = req.body.files[file].content || document.files[file].content
+            document.files[file].markers = req.body.files[file].markers || document.files[file].content
+          }
+
+
+
+          db.collection('documents').updateOne(
+              { _id: ObjectID(req.params.id) },
+              { $set: {
+                name: document.name,
+                files: document.files,
+                sharedWith: document.sharedWith,
+              } },
+            )
+            .then(result => {
+              console.log('document saved')
+              return res.send(JSON.stringify({id: ObjectID(req.params.id)}))
+            })
+            .catch(error => console.error(error))
         })
-        .catch(error => console.error(error))
+
+
+
     })
     
     // GET all documents
@@ -54,8 +85,13 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // return res.send('These are your files')
       db.collection('documents').find().toArray()
         .then(results => {
-          console.log(results)
-          return res.send(results)
+          const filesOnLoad = cloneDeep(results)
+          
+          for (let file in filesOnLoad) {
+            delete filesOnLoad[file].content
+          }
+
+          return res.send(filesOnLoad)
         })
     })
 
@@ -64,7 +100,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // TODO: should this be findOne ?
       db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
         .then(results => {
-          // console.log(results)
           return res.send(results)
         })
     })
@@ -77,7 +112,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // return res.send('These are your files')
       db.collection('students').find().toArray()
         .then(results => {
-          // console.log(results)
           return res.send(results)
         })
     })
@@ -86,7 +120,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
     app.post('/student', (req, res) => {
       db.collection('students').insertOne(req.body)
         .then(result => {
-          // console.log(result)
           db.collection('users').updateOne(
               { username: 'Selen' },
               { $addToSet: { students: {
@@ -103,7 +136,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
     // POST: new document to student
     app.post('/student/:id/document', (req, res) => {
-      console.log('request:', req)
       db.collection('students').updateOne(
           { _id: ObjectID(req.params.id) },
           { $addToSet: { documents: {
@@ -112,7 +144,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           } } },
         )
         .then(result => {
-          // console.log(result)
           db.collection('documents').updateOne(
             { _id: ObjectID(req.body._id) },
             { $addToSet: { sharedWith: { _id: ObjectID(req.params.id) } } },
@@ -129,7 +160,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // TODO: should this be findOne ?
       db.collection('students').find({name: req.params.name}).toArray()
         .then(results => {
-          // console.log(results)
           return res.send(results)
         })
     })
@@ -141,7 +171,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // TODO: should this be findOne ?
       db.collection('users').find({username: req.params.name}).toArray()
         .then(results => {
-          // console.log(results)
 
           // for (let student in results.students) {
           //   db.collection('students').find({name: results.students[student].name}).toArray()
