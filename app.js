@@ -58,8 +58,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
             document.files[file].markers = req.body.files[file].markers || document.files[file].content
           }
 
-
-
           db.collection('documents').updateOne(
               { _id: ObjectID(req.params.id) },
               { $set: {
@@ -136,31 +134,83 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
     // POST: new document to student
     app.post('/student/:id/document', (req, res) => {
-      db.collection('students').updateOne(
-          { _id: ObjectID(req.params.id) },
-          { $addToSet: { documents: {
-            _id: req.body._id,
-            name: req.body.name,
-          } } },
-        )
+      db.collection('documents').find({_id: ObjectID(req.body._id)}).toArray()
         .then(result => {
-          db.collection('documents').updateOne(
-            { _id: ObjectID(req.body._id) },
-            { $addToSet: { sharedWith: { _id: ObjectID(req.params.id) } } },
-          )
-            .then(result => {
-              return res.send(`Success! Added new document: "${req.body.id}" to user ${req.params.id}`)
-            })
+          const documentShares = result[0].sharedWith
+          let userIDHasShare = null
+          const documentName = result[0].name
+
+          for (let share in documentShares) {
+            console.log('documentShares[share]._id:', documentShares[share]._id, 'req.params.id:', req.params.id)
+            if (documentShares[share]._id == req.params.id) {
+              console.log('share:', share)
+              userIDHasShare = share
+            }
+          }
+
+          // console.log(`Success! Removed document: "${req.body._id}" from user ${req.params.id}`)
+          // console.log('userIDHasShare:', userIDHasShare)
+
+          if (!!userIDHasShare) {
+            // console.log('happen useridhasshare')
+            db.collection('students').updateOne(
+                { _id: ObjectID(req.params.id) },
+                { $pull: { documents: {
+                  _id: req.body._id,
+                  // name: documentName,
+                } } },
+              )
+              .then(result => {
+                db.collection('documents').updateOne(
+                  { _id: ObjectID(req.body._id) },
+                  { $pull: { sharedWith: { _id: ObjectID(req.params.id) } } },
+                )
+                  .then(result => {
+                    return res.send(`Success! Removed document: "${req.body._id}" from user ${req.params.id}`)
+                  })
+              })
+              .catch(error => console.error(error))
+
+          } else {
+            // console.log('happen eelse')
+            db.collection('students').updateOne(
+                { _id: ObjectID(req.params.id) },
+                { $addToSet: { documents: {
+                  _id: req.body._id,
+                } } },
+              )
+              .then(result => {
+                db.collection('documents').updateOne(
+                  { _id: ObjectID(req.body._id) },
+                  { $addToSet: { sharedWith: { _id: ObjectID(req.params.id) } } },
+                )
+                  .then(result => {
+                    return res.send(`Success! Added new document: "${req.body.id}" to user ${req.params.id}`)
+                  })
+              })
+              .catch(error => console.error(error))
+          }
+
         })
-        .catch(error => console.error(error))
+
     })
 
     // GET: one student
     app.get('/student/:name', (req, res) => {
-      // TODO: should this be findOne ?
       db.collection('students').find({name: req.params.name}).toArray()
         .then(results => {
-          return res.send(results)
+          db.collection('documents').find(
+            {
+              sharedWith: {
+                _id: ObjectID(results[0]._id)
+              }
+            }
+          ).toArray()
+            .then(items => {
+              results[0].documents = items
+
+              return res.send(results)
+            })
         })
     })
 
