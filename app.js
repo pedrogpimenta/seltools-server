@@ -106,6 +106,14 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
         })
     })
 
+    // DELETE one document
+    app.delete('/document/:id', (req, res) => {
+      db.collection('documents').deleteOne({_id: ObjectID(req.params.id)})
+        .then(results => {
+          return res.send(results)
+        })
+    })
+
     // ------ Student API ------ //
 
     // GET all students
