@@ -26,7 +26,11 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
     // POST new document
     app.post('/document', (req, res) => {
       console.log('POST')
-      db.collection('documents').insertOne(req.body)
+      const document = cloneDeep(req.body)
+
+      document.createDate = new Date()
+
+      db.collection('documents').insertOne(document)
         .then(result => {
           console.log('document saved')
           return res.send(JSON.stringify({id: result.insertedId}))
@@ -81,7 +85,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
     // TODO: This should be removed, list all shouldn't be possible
     app.get('/documents', (req, res) => {
       // return res.send('These are your files')
-      db.collection('documents').find().toArray()
+      db.collection('documents').find().sort({createDate: -1}).toArray()
         .then(results => {
           const filesOnLoad = cloneDeep(results)
           
