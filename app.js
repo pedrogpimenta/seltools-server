@@ -1,9 +1,18 @@
 const express = require('express')
 const cloneDeep = require('lodash/cloneDeep')
 const { MongoClient, ObjectID } = require('mongodb')
+const aws = require('aws-sdk')
 // const MongoClient = require('mongodb').MongoClient
 
 const app = express()
+
+aws.config.update({
+  region: 'eu-west-1', // Put your aws region here
+  accessKeyId: process.env.ACCESS_KEY_ID,
+  secretAccessKey: process.env.SECRET_ACCESS_KEY,
+})
+
+const S3_BUCKET = 'seltools'
 
 MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltools', {
   useUnifiedTopology: true
@@ -58,8 +67,8 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
             document.files[file].id = req.body.files[file].id || document.files[file].id
             document.files[file].name = req.body.files[file].name || document.files[file].name
-            document.files[file].content = req.body.files[file].content || document.files[file].content
-            document.files[file].markers = req.body.files[file].markers || document.files[file].content
+            document.files[file].url = req.body.files[file].url || document.files[file].url
+            document.files[file].markers = req.body.files[file].markers || document.files[file].markers
           }
 
           db.collection('documents').updateOne(
@@ -91,6 +100,8 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           
           for (let document in documents) {
             delete documents[document].files
+            delete documents[document].markers
+            delete documents[document].sharedWith
           }
 
           return res.send(documents)
@@ -244,6 +255,36 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
           return res.send(results)
         })
+    })
+
+    // FILE AWS S3 BUCKET
+    app.post('/sign_s3', (req, res) => {
+      const s3 = new aws.S3({signatureVersion: 'v4'})  // Create a new instance of S3
+      const fileName = req.body.fileName
+      const fileType = req.body.fileType
+
+      const s3Params = {
+        Bucket: S3_BUCKET,
+        Key: `files/${fileName}`,
+        Expires: 500,
+        ContentType: fileType,
+        ACL: 'public-read',
+      }
+
+      s3.getSignedUrl('putObject', s3Params, (err, data) => {
+        if (err) {
+          console.log(err)
+          res.json({success: false, error: err})
+        }
+
+        const returnData = {
+          signedRequest: data,
+          url: `https://${S3_BUCKET}.s3.amazonaws.com/files/${fileName}`
+        }
+
+        res.json({success:true, data:{returnData}});
+      })
+
     })
 
     // ---- END API ---- //
