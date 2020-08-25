@@ -228,7 +228,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
                 _id: ObjectID(results[0]._id)
               }
             }
-          ).toArray()
+          ).sort({createDate: -1}).toArray()
             .then(items => {
               results[0].documents = items
 
