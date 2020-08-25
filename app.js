@@ -87,13 +87,13 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // return res.send('These are your files')
       db.collection('documents').find().sort({createDate: -1}).toArray()
         .then(results => {
-          const filesOnLoad = cloneDeep(results)
+          const documents = cloneDeep(results)
           
-          for (let file in filesOnLoad) {
-            filesOnLoad[file].content = ''
+          for (let document in documents) {
+            delete documents[document].files
           }
 
-          return res.send(filesOnLoad)
+          return res.send(documents)
         })
     })
 
