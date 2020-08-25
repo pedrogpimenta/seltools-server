@@ -90,7 +90,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           const filesOnLoad = cloneDeep(results)
           
           for (let file in filesOnLoad) {
-            delete filesOnLoad[file].content
+            filesOnLoad[file].content = ''
           }
 
           return res.send(filesOnLoad)
