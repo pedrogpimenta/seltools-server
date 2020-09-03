@@ -66,6 +66,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
             if (document.files.length <= file) document.files.push({})
 
             document.files[file].id = req.body.files[file].id || document.files[file].id
+            document.files[file].type = req.body.files[file].type || document.files[file].type
             document.files[file].name = req.body.files[file].name || document.files[file].name
             document.files[file].url = req.body.files[file].url || document.files[file].url
             document.files[file].markers = req.body.files[file].markers || document.files[file].markers
