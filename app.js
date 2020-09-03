@@ -8,8 +8,8 @@ const app = express()
 
 aws.config.update({
   region: 'eu-west-1', // Put your aws region here
-  accessKeyId: process.env.ACCESS_KEY_ID,
-  secretAccessKey: process.env.SECRET_ACCESS_KEY,
+  accessKeyId: process.env.ACCESS_KEY_ID || 'AKIAJ4UOIGFPBDMUA75A',
+  secretAccessKey: process.env.SECRET_ACCESS_KEY || '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',
 })
 
 const S3_BUCKET = 'seltools'
@@ -56,7 +56,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           const document = cloneDeep(results[0])
 
           document.name = req.body.name || document.name
-          document.sharedWith = req.body.sharedWith || document.sharedWith
+          document.sharedWith = req.body.sharedWith || document.sharedWith || []
 
           if (req.body.files.length < document.files.length) {
             document.files.splice(req.body.files.length, document.files.length - req.body.files.length)
@@ -76,7 +76,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
               { $set: {
                 name: document.name,
                 files: document.files,
-                sharedWith: document.sharedWith,
+                sharedWith: document.sharedWith || [],
               } },
             )
             .then(result => {
