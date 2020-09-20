@@ -70,6 +70,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
             document.files[file].name = req.body.files[file].name || document.files[file].name
             document.files[file].url = req.body.files[file].url || document.files[file].url
             document.files[file].markers = req.body.files[file].markers || document.files[file].markers
+            document.files[file].content = req.body.files[file].content || document.files[file].content
           }
 
           db.collection('documents').updateOne(
