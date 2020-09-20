@@ -141,8 +141,11 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
     // POST: new student
     app.post('/student', (req, res) => {
+      let studentId = ''
+
       db.collection('students').insertOne(req.body)
         .then(result => {
+          studentId = result.insertedId
           db.collection('users').updateOne(
               { username: 'Selen' },
               { $addToSet: { students: {
@@ -151,7 +154,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
               } } },
             )
             .then(result => {
-              return res.send(`Success! Added student: "${req.body.name}" to user: Selen`)
+              return res.send({_id: studentId, name: req.body.name})
             })
         })
         .catch(error => console.error(error))
