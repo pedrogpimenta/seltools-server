@@ -65,6 +65,11 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           for (let file in req.body.files) {
             if (document.files.length <= file) document.files.push({})
 
+            // TODO: improve this. I do this because if document.content === '', it will keep the content of the previous file
+            // This happens with other things (previously with name, but I now send null and it works)
+            // All of this should be improved though
+            document.files[file].content = ''
+
             document.files[file].id = req.body.files[file].id || document.files[file].id
             document.files[file].type = req.body.files[file].type || document.files[file].type
             document.files[file].name = req.body.files[file].name || document.files[file].name
