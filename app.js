@@ -27,7 +27,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
     // TODO: This doesn't do anything
     app.get('/', (req, res) => {
-      return res.send('You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>')
+      return res.send('STAGING You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>')
     })
 
     // ------ Document API ------ //
