@@ -37,14 +37,23 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       console.log('POST')
       const document = cloneDeep(req.body)
 
-      document.createDate = new Date()
+      db.collection('documents').findOne({_id: ObjectID(req.query.parent)})
+        .then(results => {
+          const parent = results
 
-      db.collection('documents').insertOne(document)
-        .then(result => {
-          console.log('document saved')
-          return res.send(JSON.stringify({id: result.insertedId}))
+          document.parent = ObjectID(document.parent)
+          document.ancestors = parent.ancestors
+          document.level = parent.ancestors.length
+          document.createDate = new Date()
+    
+          db.collection('documents').insertOne(document)
+            .then(result => {
+              console.log('document saved')
+              return res.send(JSON.stringify({id: result.insertedId}))
+            })
+            .catch(error => console.error(error))
         })
-        .catch(error => console.error(error))
+
     })
 
     // PUT document
@@ -257,16 +266,149 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       // TODO: should this be findOne ?
       db.collection('users').find({username: req.params.name}).toArray()
         .then(results => {
+          const userResults = results
 
-          // for (let student in results.students) {
-          //   db.collection('students').find({name: results.students[student].name}).toArray()
-          //     .then(studentResult => {
-                
+          // let userDocuments = []
+          // let userFolders = []
+          // let currentFolderContent = []
+
+          // const currentParams = []
+          // Object.values(req.params).forEach(val => currentParams.push(val))
+          // const currentPath = currentParams.filter(folder => !!folder ? folder : false)
+          // const prevFolders = currentPath.slice()
+
+          // for (let folder = 0; folder < currentPath.length; folder++) {
+          //   if (currentPath[folder] === 'Selen') {
+          //     currentFolderContent = []
+          //     userResults[0].documents.find(doc => {
+          //       if (doc.type === 'document') {
+          //         userDocuments.push(ObjectID(doc.docId))
+          //       } else {
+          //         userFolders.push(doc)
+          //       }
+
+          //       currentFolderContent.push(doc)
           //     })
+          //   } else {
+          //     userDocuments = []
+          //     userFolders = []
+          //     currentFolderContent.find(folder => {
+          //       if (folder._id == prevFolders[0]) {
+          //         folder.contents.find(doc => {
+          //           if (doc.type === 'document') {
+          //             userDocuments.push(ObjectID(doc.docId))
+          //           } else {
+          //             userFolders.push(doc)
+          //           }
 
+          //           currentFolderContent.push(doc)
+          //         })
+          //       }
+          //     })
+          //   }
+
+          //   prevFolders.shift()
           // }
 
-          return res.send(results)
+          db.collection('documents').find(
+            {parent: req.params.name}
+          ).sort({createDate: -1}).toArray()
+            .then(results => {
+              const documents = cloneDeep(results)
+              
+              for (let document in documents) {
+                delete documents[document].files
+                delete documents[document].markers
+                delete documents[document].sharedWith
+              }
+
+              // return res.send({user: userResults[0], folders: userFolders, documents: documents})
+              return res.send({user: userResults[0], documents: documents})
+            })
+        })
+    })
+
+    app.get('/user/documents/:folderId', (req, res) => {
+      if (req.params.folderId === 'Selen') {
+        db.collection('documents').findOne({name: req.params.folderId})
+          .then(results => {
+            const folder = results
+
+            db.collection('documents').find({parent: ObjectID(folder._id)}).toArray()
+            .then(results => {
+              const documents = results
+    
+              db.collection('documents').find(
+                {_id: { $in: folder.ancestors }}
+              ).sort({level: 1}).toArray()
+                .then(results => {
+                  return res.send({folder: folder, documents: documents, breadcrumbs: results})
+                })
+            })
+          })
+      } else {
+        db.collection('documents').findOne({_id: ObjectID(req.params.folderId)})
+          .then(results => {
+            const folder = results
+
+            db.collection('documents').find({parent: ObjectID(req.params.folderId)}).toArray()
+            .then(results => {
+              const documents = results
+    
+              db.collection('documents').find(
+                {_id: { $in: folder.ancestors }}
+              ).sort({level: 1}).toArray()
+                .then(results => {
+                  return res.send({folder: folder, documents: documents, breadcrumbs: results})
+                })
+            })
+          })
+      }
+
+
+    //   db.collection('documents').findOne(folderContentQuery).toArray()
+    //     .then(results => {
+    //       const documents = results
+
+    //       console.log('folderAncestors:', folderAncestors)
+
+    //       db.collection('documents').find(
+    //         {_id: { $in: folderAncestors}}
+    //       ).sort({createDate: -1}).toArray()
+    //         .then(results => {
+    //           return res.send({documents: documents, breadcrumbs: results})
+    //         })
+    //     })
+    })
+
+
+    // ------ Folders API ------ //
+
+    // POST: new folder
+    app.post('/userfolder', (req, res) => {
+      db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
+        .then(results => {
+          const ancestors = results.ancestors
+          ancestors.push(results._id)
+    
+          db.collection('documents').insertOne(
+            {
+              name: req.body.name,
+              type: 'folder',
+              parent: ObjectID(req.body.parent),
+              createDate: new Date(),
+              ancestors: ancestors,
+              level: ancestors.length,
+            },
+          )
+            .then(results => {
+              db.collection('documents').find({parent: ObjectID(req.body.parent)}).toArray()
+                .then(results => {
+                  res.send(results)
+                })
+            })
+            .catch(error => console.error(error))
+
         })
     })
 
