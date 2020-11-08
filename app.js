@@ -40,10 +40,12 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
       db.collection('documents').findOne({_id: ObjectID(req.query.parent)})
         .then(results => {
           const parent = results
+          const ancestors = parent.ancestors
+          ancestors.push(ObjectID(req.query.parent))
 
           document.teacher = ObjectID(req.body.teacher) || document.teacher
           document.parent = ObjectID(document.parent)
-          document.ancestors = parent.ancestors
+          document.ancestors = ancestors
           document.level = parent.ancestors.length
           document.createDate = new Date()
     
@@ -157,7 +159,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           db.collection('documents').findOne({_id: ObjectID(req.body.parentId)})
             .then(result => {
 
-              console.log('parent id:', result)
               const documentAncestors = result.ancestors
               documentAncestors.push(ObjectID(req.body.parentId))
 
@@ -254,73 +255,8 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
         .catch(error => console.error(error))
     })
 
-    // POST: new document to student
-    app.post('/student/:id/document', (req, res) => {
-      db.collection('documents').find({_id: ObjectID(req.body._id)}).toArray()
-        .then(result => {
-          const documentShares = result[0].sharedWith
-          let userIDHasShare = null
-          const documentName = result[0].name
-
-          for (let share in documentShares) {
-            console.log('documentShares[share]._id:', documentShares[share]._id, 'req.params.id:', req.params.id)
-            if (documentShares[share]._id == req.params.id) {
-              console.log('share:', share)
-              userIDHasShare = share
-            }
-          }
-
-          // console.log(`Success! Removed document: "${req.body._id}" from user ${req.params.id}`)
-          // console.log('userIDHasShare:', userIDHasShare)
-
-          if (!!userIDHasShare) {
-            // console.log('happen useridhasshare')
-            db.collection('students').updateOne(
-                { _id: ObjectID(req.params.id) },
-                { $pull: { documents: {
-                  _id: req.body._id,
-                  // name: documentName,
-                } } },
-              )
-              .then(result => {
-                db.collection('documents').updateOne(
-                  { _id: ObjectID(req.body._id) },
-                  { $pull: { sharedWith: { _id: ObjectID(req.params.id) } } },
-                )
-                  .then(result => {
-                    return res.send(`Success! Removed document: "${req.body._id}" from user ${req.params.id}`)
-                  })
-              })
-              .catch(error => console.error(error))
-
-          } else {
-            // console.log('happen eelse')
-            db.collection('students').updateOne(
-                { _id: ObjectID(req.params.id) },
-                { $addToSet: { documents: {
-                  _id: req.body._id,
-                } } },
-              )
-              .then(result => {
-                db.collection('documents').updateOne(
-                  { _id: ObjectID(req.body._id) },
-                  { $addToSet: { sharedWith: { _id: ObjectID(req.params.id) } } },
-                )
-                  .then(result => {
-                    return res.send(`Success! Added new document: "${req.body.id}" to user ${req.params.id}`)
-                  })
-              })
-              .catch(error => console.error(error))
-          }
-
-        })
-
-    })
-
     // GET: one student
     app.get('/student/:name', (req, res) => {
-      console.log('student!!')
-      
       db.collection('users').findOne({name: req.params.name})
         .then(results => {
           return res.send(results)
