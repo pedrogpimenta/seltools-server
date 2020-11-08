@@ -41,10 +41,32 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
         .then(results => {
           const parent = results
 
+          document.teacher = ObjectID(req.body.teacher) || document.teacher
           document.parent = ObjectID(document.parent)
           document.ancestors = parent.ancestors
           document.level = parent.ancestors.length
           document.createDate = new Date()
+    
+          db.collection('documents').insertOne(document)
+            .then(result => {
+              console.log('document saved')
+              return res.send(JSON.stringify({id: result.insertedId}))
+            })
+            .catch(error => console.error(error))
+        })
+
+    })
+
+    // POST new document
+    app.post('/documentclone/:documentId', (req, res) => {
+      console.log('CLONE')
+
+      db.collection('documents').findOne({_id: ObjectID(req.params.documentId)})
+        .then(results => {
+          const document = results
+
+          delete document._id
+          document.name = document.name + ' Clone'
     
           db.collection('documents').insertOne(document)
             .then(result => {
@@ -65,37 +87,52 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           const document = cloneDeep(results[0])
 
           document.name = req.body.name || document.name
-          document.sharedWith = req.body.sharedWith || document.sharedWith || []
+          document.color = req.body.color || document.color
+          document.shared = typeof req.body.shared === 'undefined' ? document.shared : req.body.shared
+          // if (!!req.body.teacher) document.teacher = ObjectID(req.body.teacher) || document.teacher
+          if (!!req.body.parent) document.parent = ObjectID(req.body.parent) || document.parent
+          // document.ancestors = document.ancestors
+          document.level = document.ancestors.length || document.level
+          // document.sharedWith = req.body.sharedWith || document.sharedWith || []
 
-          if (req.body.files.length < document.files.length) {
-            document.files.splice(req.body.files.length, document.files.length - req.body.files.length)
+          if (!!req.body.files) {
+            if (req.body.files.length < document.files.length) {
+              document.files.splice(req.body.files.length, document.files.length - req.body.files.length)
+            }
+
+            for (let file in req.body.files) {
+              if (document.files.length <= file) document.files.push({})
+  
+              // TODO: improve this. I do this because if document.content === '', it will keep the content of the previous file
+              // This happens with other things (previously with name, but I now send null and it works)
+              // All of this should be improved though
+              document.files[file].content = ''
+  
+              document.files[file].id = req.body.files[file].id || document.files[file].id
+              document.files[file].type = req.body.files[file].type || document.files[file].type
+              document.files[file].name = req.body.files[file].name || document.files[file].name
+              document.files[file].url = req.body.files[file].url || document.files[file].url
+              document.files[file].markers = req.body.files[file].markers || document.files[file].markers
+              document.files[file].content = req.body.files[file].content || document.files[file].content
+              document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
+              document.files[file].creator = req.body.files[file].creator || document.files[file].creator
+              document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
+            }
           }
 
-          for (let file in req.body.files) {
-            if (document.files.length <= file) document.files.push({})
-
-            // TODO: improve this. I do this because if document.content === '', it will keep the content of the previous file
-            // This happens with other things (previously with name, but I now send null and it works)
-            // All of this should be improved though
-            document.files[file].content = ''
-
-            document.files[file].id = req.body.files[file].id || document.files[file].id
-            document.files[file].type = req.body.files[file].type || document.files[file].type
-            document.files[file].name = req.body.files[file].name || document.files[file].name
-            document.files[file].url = req.body.files[file].url || document.files[file].url
-            document.files[file].markers = req.body.files[file].markers || document.files[file].markers
-            document.files[file].content = req.body.files[file].content || document.files[file].content
-            document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
-            document.files[file].creator = req.body.files[file].creator || document.files[file].creator
-            document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
-          }
 
           db.collection('documents').updateOne(
               { _id: ObjectID(req.params.id) },
               { $set: {
                 name: document.name,
+                color: document.color,
+                // teacher: document.teacher,
+                parent: document.parent,
+                ancestors: document.ancestors,
+                level: document.level,
                 files: document.files,
-                sharedWith: document.sharedWith || [],
+                shared: document.shared,
+                // sharedWith: document.sharedWith || [],
               } },
             )
             .then(result => {
@@ -109,6 +146,38 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
     })
     
+    // MOVE document
+    app.put('/documentmove/:id', (req, res) => {
+      console.log('MOVE')
+
+      db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
+        .then(results => {
+          const document = cloneDeep(results[0])
+
+          db.collection('documents').findOne({_id: ObjectID(req.body.parentId)})
+            .then(result => {
+
+              console.log('parent id:', result)
+              const documentAncestors = result.ancestors
+              documentAncestors.push(ObjectID(req.body.parentId))
+
+              db.collection('documents').updateOne(
+                  { _id: ObjectID(req.params.id) },
+                  { $set: {
+                    parent: ObjectID(req.body.parentId),
+                    ancestors: documentAncestors,
+                    level: 0,
+                  } },
+                )
+                .then(result => {
+                  console.log('document saved')
+                  return res.send(JSON.stringify({id: ObjectID(req.params.id)}))
+                })
+                .catch(error => console.error(error))
+            })
+        })
+    })
+
     // GET all documents
     // TODO: This should be removed, list all shouldn't be possible
     app.get('/documents', (req, res) => {
@@ -130,9 +199,17 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
     // GET: one document
     app.get('/document/:id', (req, res) => {
       // TODO: should this be findOne ?
-      db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
+      db.collection('documents').findOne({_id: ObjectID(req.params.id)})
         .then(results => {
-          return res.send(results)
+          const document = results
+          db.collection('documents').find(
+            {_id: { $in: document.ancestors }})
+            .sort({level: 1}).toArray()
+            .then(results => {
+              return res.send({document: document, breadcrumbs: results})
+            })
+
+          // return res.send(results)
         })
     })
 
@@ -242,20 +319,11 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
     // GET: one student
     app.get('/student/:name', (req, res) => {
-      db.collection('students').find({name: req.params.name}).toArray()
+      console.log('student!!')
+      
+      db.collection('users').findOne({name: req.params.name})
         .then(results => {
-          db.collection('documents').find(
-            {
-              sharedWith: {
-                _id: ObjectID(results[0]._id)
-              }
-            }
-          ).sort({createDate: -1}).toArray()
-            .then(items => {
-              results[0].documents = items
-
-              return res.send(results)
-            })
+          return res.send(results)
         })
     })
 
@@ -263,129 +331,85 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
     
     // GET: one user
     app.get('/user/:name', (req, res) => {
-      // TODO: should this be findOne ?
-      db.collection('users').find({username: req.params.name}).toArray()
+      db.collection('users').findOne({username: req.params.name})
         .then(results => {
-          const userResults = results
-
-          // let userDocuments = []
-          // let userFolders = []
-          // let currentFolderContent = []
-
-          // const currentParams = []
-          // Object.values(req.params).forEach(val => currentParams.push(val))
-          // const currentPath = currentParams.filter(folder => !!folder ? folder : false)
-          // const prevFolders = currentPath.slice()
-
-          // for (let folder = 0; folder < currentPath.length; folder++) {
-          //   if (currentPath[folder] === 'Selen') {
-          //     currentFolderContent = []
-          //     userResults[0].documents.find(doc => {
-          //       if (doc.type === 'document') {
-          //         userDocuments.push(ObjectID(doc.docId))
-          //       } else {
-          //         userFolders.push(doc)
-          //       }
-
-          //       currentFolderContent.push(doc)
-          //     })
-          //   } else {
-          //     userDocuments = []
-          //     userFolders = []
-          //     currentFolderContent.find(folder => {
-          //       if (folder._id == prevFolders[0]) {
-          //         folder.contents.find(doc => {
-          //           if (doc.type === 'document') {
-          //             userDocuments.push(ObjectID(doc.docId))
-          //           } else {
-          //             userFolders.push(doc)
-          //           }
-
-          //           currentFolderContent.push(doc)
-          //         })
-          //       }
-          //     })
-          //   }
-
-          //   prevFolders.shift()
-          // }
-
-          db.collection('documents').find(
-            {parent: req.params.name}
-          ).sort({createDate: -1}).toArray()
-            .then(results => {
-              const documents = cloneDeep(results)
-              
-              for (let document in documents) {
-                delete documents[document].files
-                delete documents[document].markers
-                delete documents[document].sharedWith
-              }
-
-              // return res.send({user: userResults[0], folders: userFolders, documents: documents})
-              return res.send({user: userResults[0], documents: documents})
-            })
+          return res.send({user: results})
         })
     })
 
-    app.get('/user/documents/:folderId', (req, res) => {
-      if (req.params.folderId === 'Selen') {
-        db.collection('documents').findOne({name: req.params.folderId})
-          .then(results => {
-            const folder = results
+    app.get('/user/:userId/documents/:folderId', (req, res) => {
+      db.collection('users').findOne({_id: ObjectID(req.params.userId)})
+        .then(results => {
+          if (results.type === 'teacher') {
+            db.collection('documents').findOne({_id: ObjectID(req.params.folderId)})
+              .then(results => {
+                const folder = results
 
-            db.collection('documents').find({parent: ObjectID(folder._id)}).toArray()
-            .then(results => {
-              const documents = results
-    
-              db.collection('documents').find(
-                {_id: { $in: folder.ancestors }}
-              ).sort({level: 1}).toArray()
-                .then(results => {
-                  return res.send({folder: folder, documents: documents, breadcrumbs: results})
-                })
-            })
-          })
-      } else {
-        db.collection('documents').findOne({_id: ObjectID(req.params.folderId)})
-          .then(results => {
-            const folder = results
+                if (folder.type === 'teacher') {
+                  db.collection('documents')
+                    .find({parent: ObjectID(folder._id), type: 'student'})
+                    .sort({name: 1}).toArray()
+                    .then(results => {
+                      const students = results;
+                      
+                      db.collection('documents')
+                        .find({ $or: [ {parent: ObjectID(req.params.folderId), type: 'folder' }, {parent: ObjectID(req.params.folderId), type: 'document' } ] })
+                        .sort({type: -1, createDate: -1}).toArray()
+                        .then(results => {
+                          const documents = results
+                
+                          db.collection('documents').find(
+                            {_id: { $in: folder.ancestors }})
+                            .sort({level: 1}).toArray()
+                            .then(results => {
+                              return res.send({students: students, folder: folder, documents: documents, breadcrumbs: results})
+                            })
+                        })
+                    })
+                } else {
+                  db.collection('documents')
+                    .find({ $or: [ {parent: ObjectID(req.params.folderId), type: 'folder' }, {parent: ObjectID(req.params.folderId), type: 'document' } ] })
+                    .sort({type: -1, createDate: -1}).toArray()
+                    .then(results => {
+                      const documents = results
+            
+                      db.collection('documents').find(
+                        {_id: { $in: folder.ancestors }}
+                      ).sort({level: 1}).toArray()
+                        .then(results => {
+                          return res.send({folder: folder, documents: documents, breadcrumbs: results})
+                        })
+                    })
+                }
+              })
+          } else {
+            db.collection('documents').findOne({_id: ObjectID(req.params.folderId)})
+              .then(results => {
+                const folder = results
 
-            db.collection('documents').find({parent: ObjectID(req.params.folderId)}).toArray()
-            .then(results => {
-              const documents = results
-    
-              db.collection('documents').find(
-                {_id: { $in: folder.ancestors }}
-              ).sort({level: 1}).toArray()
-                .then(results => {
-                  return res.send({folder: folder, documents: documents, breadcrumbs: results})
-                })
-            })
-          })
-      }
+                db.collection('documents')
+                  .find({ $or: [ {parent: ObjectID(req.params.folderId), type: 'folder', shared: true}, {parent: ObjectID(req.params.folderId), type: 'document', shared: true } ] })
+                  .sort({type: -1, createDate: -1}).toArray()
+                  .then(results => {
+                    const documents = results
+          
+                    db.collection('documents').find(
+                      {_id: { $in: folder.ancestors }}
+                    ).sort({level: 1}).toArray()
+                      .then(results => {
+                        return res.send({folder: folder, documents: documents, breadcrumbs: results})
+                      })
+                  })
+              })
+          }
+        })
 
-
-    //   db.collection('documents').findOne(folderContentQuery).toArray()
-    //     .then(results => {
-    //       const documents = results
-
-    //       console.log('folderAncestors:', folderAncestors)
-
-    //       db.collection('documents').find(
-    //         {_id: { $in: folderAncestors}}
-    //       ).sort({createDate: -1}).toArray()
-    //         .then(results => {
-    //           return res.send({documents: documents, breadcrumbs: results})
-    //         })
-    //     })
     })
-
 
     // ------ Folders API ------ //
 
     // POST: new folder
-    app.post('/userfolder', (req, res) => {
+    app.post('/folder', (req, res) => {
       db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
         .then(results => {
           const ancestors = results.ancestors
@@ -394,7 +418,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           db.collection('documents').insertOne(
             {
               name: req.body.name,
-              type: 'folder',
+              type: req.body.type,
               parent: ObjectID(req.body.parent),
               createDate: new Date(),
               ancestors: ancestors,
@@ -402,16 +426,27 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
             },
           )
             .then(results => {
-              db.collection('documents').find({parent: ObjectID(req.body.parent)}).toArray()
-                .then(results => {
-                  res.send(results)
-                })
+              if (req.body.type === 'folder') {
+                db.collection('documents')
+                  .find({ $or: [ {parent: ObjectID(req.body.parent), type: 'folder' }, {parent: ObjectID(req.body.parent), type: 'document' } ] })
+                  .sort({type: -1, createDate: -1}).toArray()
+                  .then(results => {
+                    res.send(results)
+                  })
+              } else {
+                db.collection('documents')
+                  .find({parent: ObjectID(req.body.parent), type: 'student' })
+                  .sort({name: 1}).toArray()
+                  // .toArray()
+                  .then(results => {
+                    res.send(results)
+                  })
+              }
             })
             .catch(error => console.error(error))
-
         })
     })
-
+    
     // FILE AWS S3 BUCKET
     app.post('/sign_s3', (req, res) => {
       const s3 = new aws.S3({signatureVersion: 'v4'})  // Create a new instance of S3
