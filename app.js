@@ -319,6 +319,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
                 }
               })
           } else {
+
             db.collection('documents').findOne({_id: ObjectID(req.params.folderId)})
               .then(results => {
                 const folder = results
@@ -351,16 +352,14 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
           const ancestors = results.ancestors
           ancestors.push(results._id)
     
-          db.collection('documents').insertOne(
-            {
+          db.collection('documents').insertOne({
               name: req.body.name,
               type: req.body.type,
               parent: ObjectID(req.body.parent),
               createDate: new Date(),
               ancestors: ancestors,
               level: ancestors.length,
-            },
-          )
+            })
             .then(results => {
               if (req.body.type === 'folder') {
                 db.collection('documents')
@@ -370,13 +369,19 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
                     res.send(results)
                   })
               } else {
-                db.collection('documents')
-                  .find({parent: ObjectID(req.body.parent), type: 'student' })
-                  .sort({name: 1}).toArray()
-                  // .toArray()
-                  .then(results => {
-                    res.send(results)
-                  })
+                db.collection('users').insertOne({
+                  name: req.body.name,
+                  type: req.body.type,
+                  folderId: results.insertedId,
+                }).then(results => {
+                  db.collection('documents')
+                    .find({parent: ObjectID(req.body.parent), type: 'student' })
+                    .sort({name: 1}).toArray()
+                    // .toArray()
+                    .then(results => {
+                      res.send(results)
+                    })
+                })
               }
             })
             .catch(error => console.error(error))
