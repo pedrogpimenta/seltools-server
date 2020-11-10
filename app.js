@@ -69,6 +69,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
 
           delete document._id
           document.name = document.name + ' Clone'
+          document.shared = false
     
           db.collection('documents').insertOne(document)
             .then(result => {
@@ -362,12 +363,7 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
             })
             .then(results => {
               if (req.body.type === 'folder') {
-                db.collection('documents')
-                  .find({ $or: [ {parent: ObjectID(req.body.parent), type: 'folder' }, {parent: ObjectID(req.body.parent), type: 'document' } ] })
-                  .sort({type: -1, createDate: -1}).toArray()
-                  .then(results => {
-                    res.send(results)
-                  })
+                res.send(results)
               } else {
                 db.collection('users').insertOne({
                   name: req.body.name,
@@ -377,7 +373,6 @@ MongoClient.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/seltoo
                   db.collection('documents')
                     .find({parent: ObjectID(req.body.parent), type: 'student' })
                     .sort({name: 1}).toArray()
-                    // .toArray()
                     .then(results => {
                       res.send(results)
                     })
