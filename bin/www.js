@@ -152,8 +152,10 @@ MongoClient.connect(
 
       db.collection('documents').findOne({_id: ObjectID(req.query.parent)})
         .then(results => {
+          console.log('req parent:', req.query.parent)
+          console.log('results:', results)
           const parent = results
-          const ancestors = parent.ancestors
+          const ancestors = parent.ancestors || []
           ancestors.push(ObjectID(req.query.parent))
 
           document.teacher = ObjectID(req.body.teacher) || document.teacher
@@ -161,6 +163,8 @@ MongoClient.connect(
           document.ancestors = ancestors
           document.level = parent.ancestors.length
           document.createDate = new Date()
+          document.modifiedDate = new Date()
+          document.modifiedBy = new Date()
     
           db.collection('documents').insertOne(document)
             .then(result => {
@@ -183,6 +187,7 @@ MongoClient.connect(
           delete document._id
           document.name = document.name + ' Clone'
           document.createDate = new Date()
+          document.modifiedDate = new Date()
           document.shared = false
     
           db.collection('documents').insertOne(document)
@@ -198,6 +203,7 @@ MongoClient.connect(
     // PUT document
     app.put('/document/:id', (req, res) => {
       console.log('PUT')
+      console.log('eh:', req.query.shouldUpdateDate)
 
       db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
         .then(results => {
@@ -206,10 +212,13 @@ MongoClient.connect(
           document.name = req.body.name || document.name
           document.color = req.body.color || document.color
           document.shared = typeof req.body.shared === 'undefined' ? document.shared : req.body.shared
-          // if (!!req.body.teacher) document.teacher = ObjectID(req.body.teacher) || document.teacher
           if (!!req.body.parent) document.parent = ObjectID(req.body.parent) || document.parent
-          // document.ancestors = document.ancestors
           document.level = document.ancestors.length || document.level
+          if (req.query.shouldUpdateDate === 'true') document.modifiedDate = new Date()
+          // document.modifiedBy = req.query.userId
+
+          // if (!!req.body.teacher) document.teacher = ObjectID(req.body.teacher) || document.teacher
+          // document.ancestors = document.ancestors
           // document.sharedWith = req.body.sharedWith || document.sharedWith || []
 
           if (!!req.body.files) {
@@ -249,6 +258,8 @@ MongoClient.connect(
                 level: document.level,
                 files: document.files,
                 shared: document.shared,
+                modifiedDate: document.modifiedDate,
+                // modifiedBy: document.modifiedBy,
                 // sharedWith: document.sharedWith || [],
               } },
             )
@@ -358,7 +369,7 @@ MongoClient.connect(
               { username: 'Selen' },
               { $addToSet: { students: {
                 _id: result.insertedId,
-                name: req.body.name,
+                username: req.body.name,
               } } },
             )
             .then(result => {
@@ -370,7 +381,7 @@ MongoClient.connect(
 
     // GET: one student
     app.get('/student/:name', (req, res) => {
-      db.collection('users').findOne({name: req.params.name})
+      db.collection('users').findOne({username: req.params.name})
         .then(results => {
           return res.send(results)
         })
@@ -538,20 +549,34 @@ MongoClient.connect(
     let connectedClients = []
 
     io.on('connection', socket => {
-      console.log('client connected:', socket.id);
-      // console.log('client connected', socket);
+      console.log('client connected:', socket.id)
+      // console.log('client connected', socket)
     
       socket.on('disconnect', (reason) => {
         console.log('client disconnected:', socket.id)
+        const disconnectingClient = connectedClients.find(client => client.socketId === socket.id)
         const newConnectedClients = connectedClients.filter(client => client.socketId !== socket.id)
         connectedClients = newConnectedClients
-        console.log('connectedClients:', connectedClients)
-      });
+
+        if (!disconnectingClient) return false
+
+        db.collection('documents').updateOne(
+            { lockedBy: ObjectID(disconnectingClient.userId) },
+            { $set: {
+              locked: false,
+              lockedBy: null,
+            } },
+          )
+          .then(result => {
+            socket.broadcast.emit('document reload', disconnectingClient.documentId)
+          })
+          .catch(error => console.error(error))
+      })
 
       socket.on('document open', (userId, documentId) => {
         console.log(`user "${userId}" opened document "${documentId}"`)
         connectedClients.push({socketId: socket.id, userId: userId, documentId: documentId})
-        console.log('connectedClients:', connectedClients)
+        // console.log('connectedClients:', connectedClients)
 
         db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
           .then(results => {
@@ -563,7 +588,7 @@ MongoClient.connect(
                   { _id: ObjectID(documentId) },
                   { $set: {
                     locked: true,
-                    lockedBy: userId,
+                    lockedBy: ObjectID(userId),
                   } },
                 )
                 .then(result => {
@@ -575,7 +600,58 @@ MongoClient.connect(
             }
           })
 
-      });
+      })
+
+      socket.on('document saved', (userId, documentId) => {
+        // console.log('document saved, should reload on others:', documentId)
+        console.log(`user "${userId}" saved document "${documentId}"`)
+
+        db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
+          .then(results => {
+            const document = cloneDeep(results[0])
+
+            if (!document.locked) {
+              console.log('document NOT locked, now locking...')
+              db.collection('documents').updateOne(
+                  { _id: ObjectID(documentId) },
+                  { $set: {
+                    locked: true,
+                    lockedBy: ObjectID(userId),
+                  } },
+                )
+                .then(result => {
+                  socket.broadcast.emit('document reload', documentId)
+                })
+                .catch(error => console.error(error))
+            } else {
+              socket.broadcast.emit('document reload', documentId)
+              console.log('document already locked by:', document.lockedBy)
+            }
+          })
+      })
+
+      socket.on('unlock document', (userId, documentId) => {
+        console.log(`user "${userId}" is unlocking the document ${documentId}`)
+
+        db.collection('documents').updateOne(
+            { _id: ObjectID(documentId) },
+            { $set: {
+              locked: true,
+              lockedBy: ObjectID(userId),
+            } },
+          )
+          .then(result => {
+            console.log('aj')
+            socket.broadcast.emit('save and lock document', userId, documentId)
+          })
+          .catch(error => console.error(error))
+      })
+      
+      socket.on('document saved after unlock', (userId, documentId) => {
+        // console.log('document saved, should reload on others:', documentId)
+        console.log(`user "${userId}" saved document "${documentId}" after unlock`)
+        socket.broadcast.emit('document reload', documentId)
+      })
     });
 
     // -- END SOCKETS -- //
