@@ -113,7 +113,7 @@ function onListening() {
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: "http://localhost:3001",
+    origin: process.env.WS_ORIGIN_URI || "http://192.168.8.180:3001",
     methods: ["GET", "POST"]
   }
 });
@@ -185,7 +185,7 @@ MongoClient.connect(
           const document = results
 
           delete document._id
-          document.name = document.name + ' Clone'
+          document.name = document.name + ' (COPIA)'
           document.createDate = new Date()
           document.modifiedDate = new Date()
           document.shared = false
@@ -203,7 +203,6 @@ MongoClient.connect(
     // PUT document
     app.put('/document/:id', (req, res) => {
       console.log('PUT')
-      console.log('eh:', req.query.shouldUpdateDate)
 
       db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
         .then(results => {
@@ -663,45 +662,45 @@ MongoClient.connect(
 
     // ---- TEMP API v2.0 ---- //
 
-    // app.get('/deletealldocuments', (req, res) => {
-    //   console.log('delete all')
-    //   db.collection('documents').removeMany({})
-    // })
-    // app.get('/insertselen', (req, res) => {
-    //   console.log('insert selen')
-    //   db.collection('documents').insertOne(
-    //     {
-    //       "name": "Selen",
-    //       "type": 'teacher',
-    //       "parent": '',
-    //       "ancestors": [],
-    //       "level": 0,
-    //     }) 
-    // })
-    // app.get('/resetdocs', (req, res) => {
-    //   console.log('reset docs')
-    //   db.collection('documents').update({},
-    //     {$set : {
-    //       "parent": ObjectID('5fb574997a50e840e0f46a1f'),
-    //       "type": 'document',
-    //       "level": 1,
-    //       "ancestors": [ObjectID('5fb574997a50e840e0f46a1f')],
-    //     }},
-    //     {upsert:false,
-    //     multi:true}) 
-    // })
-    // app.get('/resetselen', (req, res) => {
-    //   console.log('reset selen')
-    //   db.collection('documents').updateOne({name: "Selen"},
-    //     {$set : {
-    //       "parent": '',
-    //       "type": 'teacher',
-    //       "level": 0,
-    //       "ancestors": [],
-    //     }},
-    //     {upsert:false,
-    //     multi:true}) 
-    // })
+    app.get('/deletealldocuments', (req, res) => {
+      console.log('delete all')
+      db.collection('documents').removeMany({})
+    })
+    app.get('/insertselen', (req, res) => {
+      console.log('insert selen')
+      db.collection('documents').insertOne(
+        {
+          "name": "Selen",
+          "type": 'teacher',
+          "parent": '',
+          "ancestors": [],
+          "level": 0,
+        }) 
+    })
+    app.get('/resetdocs', (req, res) => {
+      console.log('reset docs')
+      db.collection('documents').update({},
+        {$set : {
+          "parent": ObjectID('5fc2b5aab8d35a3cb835ed71'),
+          "type": 'document',
+          "level": 1,
+          "ancestors": [ObjectID('5fc2b5aab8d35a3cb835ed71')],
+        }},
+        {upsert:false,
+        multi:true}) 
+    })
+    app.get('/resetselen', (req, res) => {
+      console.log('reset selen')
+      db.collection('documents').updateOne({name: "Selen"},
+        {$set : {
+          "parent": '',
+          "type": 'teacher',
+          "level": 0,
+          "ancestors": [],
+        }},
+        {upsert:false,
+        multi:true}) 
+    })
 
   })
   .catch(error => console.error(error))
