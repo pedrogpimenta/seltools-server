@@ -113,7 +113,7 @@ function onListening() {
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: process.env.WS_ORIGIN_URI || "http://192.168.8.180:3001",
+    origin: process.env.WS_ORIGIN_URI || "http://localhost:3001",
     methods: ["GET", "POST"]
   }
 });
