@@ -365,7 +365,7 @@ MongoClient.connect(
         .then(result => {
           studentId = result.insertedId
           db.collection('users').updateOne(
-              { username: 'Selen' },
+              { username: 'Sel' },
               { $addToSet: { students: {
                 _id: result.insertedId,
                 username: req.body.name,
