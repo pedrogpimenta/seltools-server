@@ -173,7 +173,6 @@ MongoClient.connect(
             })
             .catch(error => console.error(error))
         })
-
     })
 
     // POST new document
@@ -267,9 +266,6 @@ MongoClient.connect(
             })
             .catch(error => console.error(error))
         })
-
-
-
     })
     
     // MOVE document
@@ -302,24 +298,6 @@ MongoClient.connect(
         })
     })
 
-    // GET all documents
-    // TODO: This should be removed, list all shouldn't be possible
-    app.get('/documents', (req, res) => {
-      // return res.send('These are your files')
-      db.collection('documents').find().sort({createDate: -1}).toArray()
-        .then(results => {
-          const documents = cloneDeep(results)
-          
-          for (let document in documents) {
-            delete documents[document].files
-            delete documents[document].markers
-            delete documents[document].sharedWith
-          }
-
-          return res.send(documents)
-        })
-    })
-
     // GET: one document
     app.get('/document/:id', (req, res) => {
       // TODO: should this be findOne ?
@@ -344,39 +322,46 @@ MongoClient.connect(
           return res.send(results)
         })
     })
+    
+    // GET: documents
+    app.get('/user/:userId/documents/:folderId', (req, res) => {
+      db.collection('documents')
+        .aggregate([
+          {
+            $lookup: {
+              from: 'documents',
+              localField: 'ancestors',
+              foreignField: '_id',
+              as: 'breadcrumbs',
+            }
+          },
+          {
+            $match: { 
+              $or: [
+                {_id: ObjectID(req.params.folderId)},
+                {parent: ObjectID(req.params.folderId)},
+              ]
+            }
+          }
+        ])
+        .project({files: 0, modifiedDate: 0, sharedWith: 0, locked: 0, lockedBy: 0})
+        .sort({name: 1})
+        .toArray()
+        .then(results => {
+          const folder = results.find((doc) => doc._id == req.params.folderId)
+          const documents = results.filter((doc) => doc.parent == req.params.folderId)
+          const students = req.query.isTeacherFolder == 'true' ? results.filter((doc) => doc.type === 'student') : []
+
+          if (documents.length) {
+            documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
+          }
+
+          return res.send({folder: folder, breadcrumbs: folder.breadcrumbs, documents: documents, students})
+        })
+    })
+
 
     // ------ Student API ------ //
-
-    // GET all students
-    // TODO: This should be removed, list all shouldn't be possible
-    app.get('/students', (req, res) => {
-      // return res.send('These are your files')
-      db.collection('students').find().toArray()
-        .then(results => {
-          return res.send(results)
-        })
-    })
-
-    // POST: new student
-    app.post('/student', (req, res) => {
-      let studentId = ''
-
-      db.collection('students').insertOne(req.body)
-        .then(result => {
-          studentId = result.insertedId
-          db.collection('users').updateOne(
-              { username: 'Sel' },
-              { $addToSet: { students: {
-                _id: result.insertedId,
-                username: req.body.name,
-              } } },
-            )
-            .then(result => {
-              return res.send({_id: studentId, name: req.body.name})
-            })
-        })
-        .catch(error => console.error(error))
-    })
 
     // GET: one student
     app.get('/student/:name', (req, res) => {
@@ -394,76 +379,6 @@ MongoClient.connect(
         .then(results => {
           return res.send({user: results})
         })
-    })
-
-    app.get('/user/:userId/documents/:folderId', (req, res) => {
-      db.collection('users').findOne({_id: ObjectID(req.params.userId)})
-        .then(results => {
-          if (results.type === 'teacher') {
-            db.collection('documents').findOne({_id: ObjectID(req.params.folderId)})
-              .then(results => {
-                const folder = results
-
-                if (folder.type === 'teacher') {
-                  db.collection('documents')
-                    .find({parent: ObjectID(folder._id), type: 'student'})
-                    .sort({name: 1}).toArray()
-                    .then(results => {
-                      const students = results;
-                      
-                      db.collection('documents')
-                        .find({ $or: [ {parent: ObjectID(req.params.folderId), type: 'folder' }, {parent: ObjectID(req.params.folderId), type: 'document' } ] })
-                        .sort({type: -1, createDate: -1}).toArray()
-                        .then(results => {
-                          const documents = results
-                
-                          db.collection('documents').find(
-                            {_id: { $in: folder.ancestors }})
-                            .sort({level: 1}).toArray()
-                            .then(results => {
-                              return res.send({students: students, folder: folder, documents: documents, breadcrumbs: results})
-                            })
-                        })
-                    })
-                } else {
-                  db.collection('documents')
-                    .find({ $or: [ {parent: ObjectID(req.params.folderId), type: 'folder' }, {parent: ObjectID(req.params.folderId), type: 'document' } ] })
-                    .sort({type: -1, createDate: -1}).toArray()
-                    .then(results => {
-                      const documents = results
-            
-                      db.collection('documents').find(
-                        {_id: { $in: folder.ancestors }}
-                      ).sort({level: 1}).toArray()
-                        .then(results => {
-                          return res.send({folder: folder, documents: documents, breadcrumbs: results})
-                        })
-                    })
-                }
-              })
-          } else {
-
-            db.collection('documents').findOne({_id: ObjectID(req.params.folderId)})
-              .then(results => {
-                const folder = results
-
-                db.collection('documents')
-                  .find({ $or: [ {parent: ObjectID(req.params.folderId), type: 'folder', shared: true}, {parent: ObjectID(req.params.folderId), type: 'document', shared: true } ] })
-                  .sort({type: -1, createDate: -1}).toArray()
-                  .then(results => {
-                    const documents = results
-          
-                    db.collection('documents').find(
-                      {_id: { $in: folder.ancestors }}
-                    ).sort({level: 1}).toArray()
-                      .then(results => {
-                        return res.send({folder: folder, documents: documents, breadcrumbs: results})
-                      })
-                  })
-              })
-          }
-        })
-
     })
 
     // ------ Folders API ------ //
