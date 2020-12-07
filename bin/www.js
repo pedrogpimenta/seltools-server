@@ -175,7 +175,7 @@ MongoClient.connect(
         })
     })
 
-    // POST new document
+    // POST clone document
     app.post('/documentclone/:documentId', (req, res) => {
       console.log('CLONE')
 
@@ -371,6 +371,7 @@ MongoClient.connect(
         })
     })
 
+
     // ------ User API ------ //
     
     // GET: one user
@@ -380,6 +381,7 @@ MongoClient.connect(
           return res.send({user: results})
         })
     })
+
 
     // ------ Folders API ------ //
 
@@ -420,6 +422,9 @@ MongoClient.connect(
         })
     })
     
+
+    // ------ AWS API ------ //
+
     // FILE AWS S3 BUCKET
     app.post('/sign_s3', (req, res) => {
       const s3 = new aws.S3({signatureVersion: 'v4'})  // Create a new instance of S3
@@ -577,45 +582,45 @@ MongoClient.connect(
 
     // ---- TEMP API v2.0 ---- //
 
-    app.get('/deletealldocuments', (req, res) => {
-      console.log('delete all')
-      db.collection('documents').removeMany({})
-    })
-    app.get('/insertselen', (req, res) => {
-      console.log('insert selen')
-      db.collection('documents').insertOne(
-        {
-          "name": "Selen",
-          "type": 'teacher',
-          "parent": '',
-          "ancestors": [],
-          "level": 0,
-        }) 
-    })
-    app.get('/resetdocs', (req, res) => {
-      console.log('reset docs')
-      db.collection('documents').update({},
-        {$set : {
-          "parent": ObjectID('5fc2b5aab8d35a3cb835ed71'),
-          "type": 'document',
-          "level": 1,
-          "ancestors": [ObjectID('5fc2b5aab8d35a3cb835ed71')],
-        }},
-        {upsert:false,
-        multi:true}) 
-    })
-    app.get('/resetselen', (req, res) => {
-      console.log('reset selen')
-      db.collection('documents').updateOne({name: "Selen"},
-        {$set : {
-          "parent": '',
-          "type": 'teacher',
-          "level": 0,
-          "ancestors": [],
-        }},
-        {upsert:false,
-        multi:true}) 
-    })
+    // app.get('/deletealldocuments', (req, res) => {
+    //   console.log('delete all')
+    //   db.collection('documents').removeMany({})
+    // })
+    // app.get('/insertselen', (req, res) => {
+    //   console.log('insert selen')
+    //   db.collection('documents').insertOne(
+    //     {
+    //       "name": "Selen",
+    //       "type": 'teacher',
+    //       "parent": '',
+    //       "ancestors": [],
+    //       "level": 0,
+    //     }) 
+    // })
+    // app.get('/resetdocs', (req, res) => {
+    //   console.log('reset docs')
+    //   db.collection('documents').update({},
+    //     {$set : {
+    //       "parent": ObjectID('5fc2b5aab8d35a3cb835ed71'),
+    //       "type": 'document',
+    //       "level": 1,
+    //       "ancestors": [ObjectID('5fc2b5aab8d35a3cb835ed71')],
+    //     }},
+    //     {upsert:false,
+    //     multi:true}) 
+    // })
+    // app.get('/resetselen', (req, res) => {
+    //   console.log('reset selen')
+    //   db.collection('documents').updateOne({name: "Selen"},
+    //     {$set : {
+    //       "parent": '',
+    //       "type": 'teacher',
+    //       "level": 0,
+    //       "ancestors": [],
+    //     }},
+    //     {upsert:false,
+    //     multi:true}) 
+    // })
 
   })
   .catch(error => console.error(error))
