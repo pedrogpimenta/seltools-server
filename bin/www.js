@@ -350,7 +350,7 @@ MongoClient.connect(
         .then(results => {
           const folder = results.find((doc) => doc._id == req.params.folderId)
           const documents = results.filter((doc) => doc.parent == req.params.folderId)
-          const students = req.query.isTeacherFolder == 'true' ? results.filter((doc) => doc.type === 'student') : []
+          const students = results.filter((doc) => doc.type === 'student')
 
           if (documents.length) {
             documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
