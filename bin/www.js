@@ -469,7 +469,35 @@ MongoClient.connect(
 
     io.on('connection', socket => {
       console.log('client connected:', socket.id)
-      // console.log('client connected', socket)
+      console.log('client connected:', socket.request._query)
+
+      db.collection('users').updateOne(
+        { _id: ObjectID(socket.request._query.userId) },
+        { $set: {
+          online: true,
+        } },
+      )
+        .then(result => {
+          // return res.send(result)
+        })
+        .catch(error => console.error(error))
+
+
+      socket.on('user login', (user) => {
+        console.log(`user "${user.username}" logged in`)
+
+        db.collection('users').updateOne(
+          { _id: ObjectID(user._id) },
+          { $set: {
+            online: true,
+          } },
+        )
+          .then(result => {
+            // return res.send(result)
+          })
+          .catch(error => console.error(error))
+      })
+      
     
       socket.on('disconnect', (reason) => {
         console.log('client disconnected:', socket.id)
