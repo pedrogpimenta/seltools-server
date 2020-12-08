@@ -249,6 +249,7 @@ MongoClient.connect(
               document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
               document.files[file].creator = req.body.files[file].creator || document.files[file].creator
               document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
+              document.files[file].hidden = req.body.files[file].hidden || document.files[file].hidden
             }
           }
 
@@ -265,6 +266,7 @@ MongoClient.connect(
                 files: document.files,
                 shared: document.shared,
                 modifiedDate: document.modifiedDate,
+                hidden: document.hidden,
                 // modifiedBy: document.modifiedBy,
                 // sharedWith: document.sharedWith || [],
               } },
