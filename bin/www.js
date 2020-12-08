@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 
+var passport = require('passport');
+var LocalStrategy = require('passport-local').Strategy;
+
 const cloneDeep = require('lodash/cloneDeep')
 const { MongoClient, ObjectID } = require('mongodb')
+
 const aws = require('aws-sdk')
 aws.config.update({
   region: 'eu-west-1', // Put your aws region here
@@ -110,14 +114,12 @@ function onListening() {
   debug('Listening on ' + bind);
 }
 
-
 const io = require('socket.io')(server, {
   cors: {
     origin: process.env.WS_ORIGIN_URI || "http://localhost:3001",
     methods: ["GET", "POST"]
   }
 });
-
 
 
 /**
@@ -134,6 +136,12 @@ MongoClient.connect(
     console.log('Connected to db')
     const db = client.db('seltools')
     // const files = db.collection('files')
+
+    // ----------------- //
+    // ----- AUTH ------ //
+
+
+
 
     // ----------------- //
     // ------ API ------ //
@@ -465,65 +473,36 @@ MongoClient.connect(
     // - BEGIN SOCKETS - //
     // ----------------- //
 
-    let connectedClients = []
-
     io.on('connection', socket => {
-      console.log('client connected:', socket.id)
-      console.log('client connected:', socket.request._query)
-
-      db.collection('users').updateOne(
+      // Save user as online
+      db.collection('users').findOneAndUpdate(
         { _id: ObjectID(socket.request._query.userId) },
         { $set: {
           online: true,
+          socketId: socket.id,
         } },
       )
         .then(result => {
-          // return res.send(result)
+          console.log(`user "${result.value.username}" is online`)
         })
         .catch(error => console.error(error))
 
-
-      socket.on('user login', (user) => {
-        console.log(`user "${user.username}" logged in`)
-
-        db.collection('users').updateOne(
-          { _id: ObjectID(user._id) },
+      socket.on('disconnect', () => {
+        db.collection('users').findOneAndUpdate(
+          { socketId: socket.id },
           { $set: {
-            online: true,
+            online: false,
+            socketId: null,
           } },
         )
           .then(result => {
-            // return res.send(result)
-          })
-          .catch(error => console.error(error))
-      })
-      
-    
-      socket.on('disconnect', (reason) => {
-        console.log('client disconnected:', socket.id)
-        const disconnectingClient = connectedClients.find(client => client.socketId === socket.id)
-        const newConnectedClients = connectedClients.filter(client => client.socketId !== socket.id)
-        connectedClients = newConnectedClients
-
-        if (!disconnectingClient) return false
-
-        db.collection('documents').updateOne(
-            { lockedBy: ObjectID(disconnectingClient.userId) },
-            { $set: {
-              locked: false,
-              lockedBy: null,
-            } },
-          )
-          .then(result => {
-            socket.broadcast.emit('document reload', disconnectingClient.documentId)
+            console.log(`user "${result.value.username}" is offline`)
           })
           .catch(error => console.error(error))
       })
 
       socket.on('document open', (userId, documentId) => {
         console.log(`user "${userId}" opened document "${documentId}"`)
-        connectedClients.push({socketId: socket.id, userId: userId, documentId: documentId})
-        // console.log('connectedClients:', connectedClients)
 
         db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
           .then(results => {
@@ -603,52 +582,6 @@ MongoClient.connect(
 
     // -- END SOCKETS -- //
     // ----------------- //
-
-
-
-
-
-    // ---- TEMP API v2.0 ---- //
-
-    // app.get('/deletealldocuments', (req, res) => {
-    //   console.log('delete all')
-    //   db.collection('documents').removeMany({})
-    // })
-    // app.get('/insertselen', (req, res) => {
-    //   console.log('insert selen')
-    //   db.collection('documents').insertOne(
-    //     {
-    //       "name": "Selen",
-    //       "type": 'teacher',
-    //       "parent": '',
-    //       "ancestors": [],
-    //       "level": 0,
-    //     }) 
-    // })
-    // app.get('/resetdocs', (req, res) => {
-    //   console.log('reset docs')
-    //   db.collection('documents').update({},
-    //     {$set : {
-    //       "parent": ObjectID('5fc2b5aab8d35a3cb835ed71'),
-    //       "type": 'document',
-    //       "level": 1,
-    //       "ancestors": [ObjectID('5fc2b5aab8d35a3cb835ed71')],
-    //     }},
-    //     {upsert:false,
-    //     multi:true}) 
-    // })
-    // app.get('/resetselen', (req, res) => {
-    //   console.log('reset selen')
-    //   db.collection('documents').updateOne({name: "Selen"},
-    //     {$set : {
-    //       "parent": '',
-    //       "type": 'teacher',
-    //       "level": 0,
-    //       "ancestors": [],
-    //     }},
-    //     {upsert:false,
-    //     multi:true}) 
-    // })
 
   })
   .catch(error => console.error(error))
