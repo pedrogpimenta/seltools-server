@@ -241,7 +241,7 @@ MongoClient.connect(
               document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
               document.files[file].creator = req.body.files[file].creator || document.files[file].creator
               document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
-              document.files[file].hidden = req.body.files[file].hidden || document.files[file].hidden
+              document.files[file].hidden = req.body.files[file].hidden === true ? true : req.body.files[file].hidden === false ? false : document.files[file].hidden
             }
           }
 
@@ -358,7 +358,7 @@ MongoClient.connect(
             documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
           }
 
-          return res.send({folder: folder, breadcrumbs: folder.breadcrumbs, documents: documents, students})
+          return res.send({folder: folder, breadcrumbs: folder.breadcrumbs, documents: documents, students: students})
         })
     })
 
