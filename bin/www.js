@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
-var passport = require('passport');
-var LocalStrategy = require('passport-local').Strategy;
+const passport = require('passport')
+// const LocalStrategy = require('passport-local').Strategy
+const jwt = require('jsonwebtoken')
+const passportJWT = require('passport-jwt')
+const ExtractJwt = passportJWT.ExtractJwt
+const JwtStrategy = passportJWT.Strategy
+
 
 const cloneDeep = require('lodash/cloneDeep')
 const { MongoClient, ObjectID } = require('mongodb')
@@ -135,11 +140,51 @@ MongoClient.connect(
   .then(client => {
     console.log('Connected to db')
     const db = client.db('seltools')
-    // const files = db.collection('files')
 
     // ----------------- //
     // ----- AUTH ------ //
 
+    const jwtOptions = {}
+    jwtOptions.jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken();
+    jwtOptions.secretOrKey = 'tasmanianDevil';
+
+    const strategy = new JwtStrategy(jwtOptions, function(jwt_payload, next) {
+      console.log('payload received', jwt_payload);
+
+      db.collection('users').findOne({jwtId: jwt_payload.id})
+        .then(results => {
+          next(null, results);
+        })
+    });
+
+    passport.use(strategy);
+
+    app.post('/login', (req, res) => {
+      db.collection('users').findOne({username: req.body.name})
+        .then(results => {
+          if(results.password === req.body.password) {
+            // from now on we'll identify the user by the id and the id is the only personalized value that goes into our token
+            console.log('user id:', results._id)
+            var payload = {_id: results._id};
+            var token = jwt.sign(payload, jwtOptions.secretOrKey);
+            res.json({message: "ok", token: token});
+          } else {
+            res.status(401).json({message:"passwords did not match"});
+          }
+        })
+    })
+
+    app.get("/secret", passport.authenticate('jwt', { session: false }), function(req, res){
+      res.json("Success! You can not see this without a token");
+    });
+
+    app.get("/secretDebug",
+      function(req, res, next){
+        console.log(req.get('Authorization'));
+        next();
+      }, function(req, res){
+        res.json("debugging");
+    });
 
 
 
