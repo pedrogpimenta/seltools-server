@@ -7,7 +7,8 @@ const passportJWT = require('passport-jwt')
 const ExtractJwt = passportJWT.ExtractJwt
 const JwtStrategy = passportJWT.Strategy
 
-
+const bcrypt = require('bcrypt')
+const sendgridmail = require('@sendgrid/mail')
 const cloneDeep = require('lodash/cloneDeep')
 const { MongoClient, ObjectID } = require('mongodb')
 
@@ -19,6 +20,7 @@ aws.config.update({
 })
 
 const S3_BUCKET = 'seltools'
+sendgridmail.setApiKey('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')
 
 /**
  * Module dependencies.
@@ -127,6 +129,29 @@ const io = require('socket.io')(server, {
 });
 
 
+
+
+
+// const msg = {
+//   to: 'pedrogpimenta@gmail.com', // Change to your recipient
+//   from: 'seltools@hablaconsel.com', // Change to your verified sender
+//   subject: 'Sending with SendGrid is Fun',
+//   text: 'and easy to do anywhere, even with Node.js',
+//   html: '<strong>and easy to do anywhere, even with Node.js</strong>',
+// }
+// sendgridmail
+//   .send(msg)
+//   .then(() => {
+//     console.log('Email sent')
+//   })
+//   .catch((error) => {
+//     console.error(error)
+//   })
+
+
+
+
+
 /**
  * Connect to DB, then API and WebSockets
  */
@@ -146,11 +171,9 @@ MongoClient.connect(
 
     const jwtOptions = {}
     jwtOptions.jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken();
-    jwtOptions.secretOrKey = 'tasmanianDevil';
+    jwtOptions.secretOrKey = 'iWantToLiveInACyberpunkWorld';
 
     const strategy = new JwtStrategy(jwtOptions, function(jwt_payload, next) {
-      console.log('payload received', jwt_payload);
-
       db.collection('users').findOne({jwtId: jwt_payload.id})
         .then(results => {
           next(null, results);
@@ -160,38 +183,107 @@ MongoClient.connect(
     passport.use(strategy);
 
     app.post('/login', (req, res) => {
-      db.collection('users').findOne({username: req.body.name})
+      db.collection('users').findOne({email: req.body.email})
         .then(results => {
-          if(results.password === req.body.password) {
-            // from now on we'll identify the user by the id and the id is the only personalized value that goes into our token
-            console.log('user id:', results._id)
+          if(!!results && bcrypt.compareSync(req.body.password, results.password)) {
             var payload = {_id: results._id};
             var token = jwt.sign(payload, jwtOptions.secretOrKey);
-            res.json({message: "ok", token: token});
+            res.json({message: "ok", token: token, user: results});
           } else {
             res.status(401).json({message:"passwords did not match"});
           }
         })
     })
+    
+    app.post('/register', (req, res) => {
+      db.collection('users').findOne({email: req.body.email})
+        .then(userResults => {
+          if(!userResults) {
+            db.collection('documents')
+              .insertOne({
+                name: req.body.name,
+                type: req.body.type,
+                parent: req.body.teacher ? ObjectID(req.body.teacherFolder) : '',
+                level: 1,
+                ancestors: req.body.teacher ? [ObjectID(req.body.teacherFolder)] : [],
+              })
+              .then(results => {
+                db.collection('users').insertOne({
+                    email: req.body.email,
+                    password: bcrypt.hashSync(req.body.password, 10),
+                    username: req.body.name,
+                    type: req.body.type,
+                    userfolder: ObjectID(results.insertedId),
+                  })
+                  .then(newUserResults => {
+                    res.json({
+                      message: 'ok',
+                      newUserId: newUserResults.insertedId
+                    });
+                    
+                    // TODO: send email
+                    // const msg = {
+                    //   to: req.body.email,
+                    //   from: 'seltools@hablaconsel.com',
+                    //   subject: '¡Ya puedes acceder a tus documentos!',
+                    //   // template_id: 'd-7ec80a58953347ffb97693624419570b',
+                    // }
 
-    app.get("/secret", passport.authenticate('jwt', { session: false }), function(req, res){
-      res.json("Success! You can not see this without a token");
-    });
+                    // sendgridmail
+                    //   .send(msg)
+                    //   .then(() => {
+                    //     console.log('Email sent')
+                    //   })
+                    //   .catch((error) => {
+                    //     console.error(error)
+                    //   })
 
-    app.get("/secretDebug",
-      function(req, res, next){
-        console.log(req.get('Authorization'));
-        next();
-      }, function(req, res){
-        res.json("debugging");
-    });
+                  })
+              })
+          } else if (userResults && !userResults.userHasRegistered) {
+            db.collection('users').updateOne(
+              { email: req.body.email},
+              { $set: {
+                username: req.body.name,
+                email: req.body.email,
+                password: bcrypt.hashSync(req.body.password, 10),
+                userHasRegistered: true,
+              }})
+              .then(newUserResults => {
+                res.json({
+                  message: 'ok',
+                  newUserResults: newUserResults,
+                })
+                
+                // TODO: send email
+                // const msg = {
+                //   to: req.body.email,
+                //   from: 'seltools@hablaconsel.com',
+                //   subject: '¡Ya puedes acceder a tus documentos!',
+                //   // template_id: 'd-7ec80a58953347ffb97693624419570b',
+                // }
 
-
+                // sendgridmail
+                //   .send(msg)
+                //   .then(() => {
+                //     console.log('Email sent')
+                //   })
+                //   .catch((error) => {
+                //     console.error(error)
+                //   })
+              })
+          } else {
+            res.json({
+              message: 'error',
+              details: 'Este email ya fue utilizado',
+            })
+          }
+        })
+    })
 
     // ----------------- //
     // ------ API ------ //
 
-    // TODO: This doesn't do anything
     app.get('/', (req, res) => {
       return res.send('You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>')
     })
@@ -229,7 +321,7 @@ MongoClient.connect(
     })
 
     // POST clone document
-    app.post('/documentclone/:documentId', (req, res) => {
+    app.post('/documentclone/:documentId', passport.authenticate('jwt', { session: false }), (req, res) => {
       console.log('CLONE')
 
       db.collection('documents').findOne({_id: ObjectID(req.params.documentId)})
@@ -253,10 +345,12 @@ MongoClient.connect(
     })
 
     // PUT document
-    app.put('/document/:id', (req, res) => {
+    app.put('/document/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       console.log('PUT')
 
-      db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
+      db.collection('documents')
+        .find({_id: ObjectID(req.params.id)})
+        .toArray()
         .then(results => {
           const document = cloneDeep(results[0])
 
@@ -324,7 +418,7 @@ MongoClient.connect(
     })
     
     // MOVE document
-    app.put('/documentmove/:id', (req, res) => {
+    app.put('/documentmove/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       console.log('MOVE')
 
       db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
@@ -371,7 +465,7 @@ MongoClient.connect(
     })
 
     // DELETE one document
-    app.delete('/document/:id', (req, res) => {
+    app.delete('/document/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       db.collection('documents').deleteOne({_id: ObjectID(req.params.id)})
         .then(results => {
           return res.send(results)
@@ -379,7 +473,7 @@ MongoClient.connect(
     })
     
     // GET: documents
-    app.get('/user/:userId/documents/:folderId', (req, res) => {
+    app.get('/user/:userId/documents/:folderId', passport.authenticate('jwt', { session: false }), (req, res) => {
       db.collection('documents')
         .aggregate([
           {
@@ -405,7 +499,7 @@ MongoClient.connect(
         .then(results => {
           const folder = results.find((doc) => doc._id == req.params.folderId)
           const documents = results.filter((doc) => doc.parent == req.params.folderId)
-          const students = results.filter((doc) => doc.type === 'student')
+          const students = req.query.isTeacherFolder === 'true' ? results.filter((doc) => doc.type === 'student') : []
 
           if (documents.length) {
             documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
@@ -415,33 +509,50 @@ MongoClient.connect(
         })
     })
 
-
     // ------ Student API ------ //
 
     // GET: one student
-    app.get('/student/:name', (req, res) => {
-      db.collection('users').findOne({username: req.params.name})
-        .then(results => {
-          return res.send(results)
-        })
-    })
+    // app.get('/student/:name', (req, res) => {
+    //   db.collection('users').findOne({username: req.params.name})
+    //     .then(results => {
+    //       return res.send(results)
+    //     })
+    // })
 
 
     // ------ User API ------ //
     
     // GET: one user
-    app.get('/user/:name', (req, res) => {
-      db.collection('users').findOne({username: req.params.name})
+    app.get('/user/:userId', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('users')
+        .find(
+          {$or: [
+            {_id: ObjectID(req.params.userId)},
+            {teacherId: ObjectID(req.params.userId)},
+          ]}
+        )
+        .toArray()
         .then(results => {
-          return res.send({user: results})
+          const user = results.find((user) => user._id == req.params.userId)
+          const students = results.filter((user) => user.teacherId == req.params.userId && user.online === true)
+
+          return res.send({user: user, students: students})
         })
     })
 
+    // GET: one user name
+    app.get('/username/:userId', (req, res) => {
+      db.collection('users').findOne({_id: ObjectID(req.params.userId)})
+        .then(results => {
+          return res.send({username: results.username, userfolder: results.userfolder})
+        })
+    })
 
     // ------ Folders API ------ //
 
     // POST: new folder
-    app.post('/folder', (req, res) => {
+    app.post('/folder', passport.authenticate('jwt', { session: false }), (req, res) => {
+      console.log('id:', req.body.parent)
       db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
         .then(results => {
           const ancestors = results.ancestors
@@ -476,6 +587,33 @@ MongoClient.connect(
             .catch(error => console.error(error))
         })
     })
+
+    app.post('/newStudent', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('documents')
+        .insertOne({
+          name: req.body.name,
+          type: 'student',
+          parent: ObjectID(req.body.teacherFolder),
+          createDate: new Date(),
+          ancestors: [ObjectID(req.body.teacherFolder)],
+          level: 1,
+        })
+        .then(results => {
+          db.collection('users').insertOne({
+            username: req.body.name,
+            email: req.body.email,
+            type: 'student',
+            userfolder: results.insertedId,
+            userHasRegistered: false,
+            teacherId: ObjectID(req.body.teacherId),
+          })
+          .then(results => {
+            res.send(results)
+          })
+        .catch(error => console.error(error))
+      })
+    })
+
     
 
     // ------ AWS API ------ //
@@ -522,15 +660,32 @@ MongoClient.connect(
 
     io.on('connection', socket => {
       // Save user as online
-      db.collection('users').findOneAndUpdate(
-        { _id: ObjectID(socket.request._query.userId) },
-        { $set: {
-          online: true,
-          socketId: socket.id,
-        } },
-      )
+      db.collection('users')
+        .findOneAndUpdate(
+          { _id: ObjectID(socket.request._query.userId) },
+          { $set: {
+            online: true,
+            socketId: socket.id,
+          } },
+        )
         .then(result => {
           console.log(`user "${result.value.username}" is online`)
+
+          if (result.value.type === 'teacher') return
+
+          db.collection('users')
+            .find(
+              { $or: [
+                { _id: ObjectID(result.value.teacherId) },
+                { teacherId: ObjectID(result.value.teacherId), online: true },
+              ]}
+            )
+            .toArray()
+            .then(results => {
+              const teacherSocketId = results.find(user => user.type === 'teacher').socketId
+              const students = results.find(user => user.type === 'student')
+              socket.to(teacherSocketId).emit('connected students', students)
+            })
         })
         .catch(error => console.error(error))
 
@@ -544,14 +699,58 @@ MongoClient.connect(
         )
           .then(result => {
             console.log(`user "${result.value.username}" is offline`)
+
+            db.collection('documents')
+              .updateMany(
+                {
+                  lockedBy: ObjectID(result.value._id),
+                },
+                { $set: {
+                  locked: false,
+                  lockedBy: '',
+                }
+                }
+              )
+              .then(docResults => {
+                console.log('wat')
+
+                db.collection('users')
+                  .find({teacherId: ObjectID(result.value.teacherId), online: true})
+                  .toArray()
+                  .then(results => {
+                    socket.broadcast.emit('connected students', results)
+                  })
+              })
           })
           .catch(error => console.error(error))
+      })
+
+      socket.on('document close', (userId, documentId) => {
+        console.log(`user "${userId}" closed document "${documentId}"`)
+
+        db.collection('documents')
+          .updateMany(
+              {
+                _id: ObjectID(documentId),
+                lockedBy: ObjectID(userId),
+              },
+              { $set: {
+                locked: false,
+                lockedBy: '',
+              }
+            }
+          )
+          .then(docResults => {
+              socket.broadcast.emit('document reload', documentId)
+          })
       })
 
       socket.on('document open', (userId, documentId) => {
         console.log(`user "${userId}" opened document "${documentId}"`)
 
-        db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
+        db.collection('documents')
+          .find({_id: ObjectID(documentId)})
+          .toArray()
           .then(results => {
             const document = cloneDeep(results[0])
 
@@ -629,6 +828,21 @@ MongoClient.connect(
 
     // -- END SOCKETS -- //
     // ----------------- //
+
+
+
+    // --- TEMP API ---- //
+    // ----------------- //
+
+    // app.get('/deleteall', (req, res) => {
+    //   db.collection('documents')
+    //     .deleteMany({name: {$not: /Sel/}})
+    //     .then(results => {
+    //       return res.send('done')
+    //     })
+    // })
+
+
 
   })
   .catch(error => console.error(error))
