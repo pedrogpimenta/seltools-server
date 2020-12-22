@@ -128,6 +128,18 @@ const io = require('socket.io')(server, {
   }
 });
 
+// Helper: guid generator
+const guidGenerator = () => {
+  var S4 = function() {
+    return (((1+Math.random())*0x10000)|0).toString(16).substring(1)
+  }
+
+  return (S4()+S4()+"-"+S4()+"-"+S4()+"-"+S4()+"-"+S4()+S4()+S4())
+}
+
+
+
+
 
 
 
@@ -165,6 +177,16 @@ MongoClient.connect(
   .then(client => {
     console.log('Connected to db')
     const db = client.db('seltools')
+
+    // Reset connected users
+    
+    db.collection('users')
+      .updateMany(
+        {},
+        { $set: {
+          socketIds: [],
+        } }
+      )
 
     // ----------------- //
     // ----- AUTH ------ //
@@ -221,26 +243,17 @@ MongoClient.connect(
                       newUserId: newUserResults.insertedId
                     });
                     
-                    // TODO: send email
-                    // const msg = {
-                    //   to: req.body.email,
-                    //   from: 'seltools@hablaconsel.com',
-                    //   subject: '¡Ya puedes acceder a tus documentos!',
-                    //   // template_id: 'd-7ec80a58953347ffb97693624419570b',
-                    // }
-
-                    // sendgridmail
-                    //   .send(msg)
-                    //   .then(() => {
-                    //     console.log('Email sent')
-                    //   })
-                    //   .catch((error) => {
-                    //     console.error(error)
-                    //   })
-
+                    sendEmail({
+                      emailTo: req.body.email,
+                      templateId: 'd-7ec80a58953347ffb97693624419570b',
+                      data: {
+                        seltools_color: '#F87361',
+                        user_email: req.body.email,
+                      },
+                    })
                   })
               })
-          } else if (userResults && !userResults.userHasRegistered) {
+          } else if (userResults && userResults.type !== 'teacher' && !userResults.userHasRegistered) {
             db.collection('users').updateOne(
               { email: req.body.email},
               { $set: {
@@ -254,23 +267,16 @@ MongoClient.connect(
                   message: 'ok',
                   newUserResults: newUserResults,
                 })
-                
-                // TODO: send email
-                // const msg = {
-                //   to: req.body.email,
-                //   from: 'seltools@hablaconsel.com',
-                //   subject: '¡Ya puedes acceder a tus documentos!',
-                //   // template_id: 'd-7ec80a58953347ffb97693624419570b',
-                // }
 
-                // sendgridmail
-                //   .send(msg)
-                //   .then(() => {
-                //     console.log('Email sent')
-                //   })
-                //   .catch((error) => {
-                //     console.error(error)
-                //   })
+                sendEmail({
+                  emailTo: req.body.email,
+                  subject: '¡Ya puedes acceder a tus documentos!',
+                  templateId: 'd-9b4951a462e247f5ad4586c77edec147',
+                  data: {
+                    seltools_color: '#F87361',
+                    user_name: req.body.name,
+                  },
+                })
               })
           } else {
             res.json({
@@ -280,6 +286,74 @@ MongoClient.connect(
           }
         })
     })
+
+    app.post('/recover', (req, res) => {
+      const tempRecovery = guidGenerator()
+
+      db.collection('users')
+        .findOneAndUpdate(
+          { email: req.body.email },
+          { $set: {
+            tempRecovery: tempRecovery,
+          } }
+        )
+        .then(results => {
+          if(!!results) {
+            res.json({message: "ok"});
+
+            sendEmail({
+              emailTo: req.body.email,
+              subject: 'Recuperar cuenta',
+              templateId: 'd-605e13ccd74141c5aa486a8b54c7e53d',
+              data: {
+                seltools_color: '#F87361',
+                temp_recovery: tempRecovery,
+              }
+            })
+          }
+        })
+    })
+
+    app.get('/resetexists/:recoveryId', (req, res) => {
+
+      db.collection('users')
+        .findOne({ tempRecovery: req.params.recoveryId })
+        .then(results => {
+          if (results) {
+            res.json({message: "ok"});
+          } else {
+            res.json({message: "no"});
+          }
+        })
+    })
+    
+    app.post('/resetpass/:recoveryId', (req, res) => {
+      db.collection('users')
+        .findOneAndUpdate(
+          { tempRecovery: req.params.recoveryId },
+          {
+            $unset: {
+              tempRecovery: '',
+            },
+            $set: {
+              password: bcrypt.hashSync(req.body.password, 10),
+            },
+          }
+        )
+        .then(results => {
+          res.json({message: "ok"});
+
+          // sendEmail({
+          //   emailTo: req.body.email,
+          //   subject: 'Recuperar cuenta',
+          //   templateId: 'd-605e13ccd74141c5aa486a8b54c7e53d',
+          //   data: {
+          //     seltools_color: '#F87361',
+          //   }
+          // })
+        })
+    })
+
 
     // ----------------- //
     // ------ API ------ //
@@ -498,11 +572,16 @@ MongoClient.connect(
         .toArray()
         .then(results => {
           const folder = results.find((doc) => doc._id == req.params.folderId)
-          const documents = results.filter((doc) => doc.parent == req.params.folderId)
+          let documents = results.filter((doc) => doc.parent == req.params.folderId)
           const students = req.query.isTeacherFolder === 'true' ? results.filter((doc) => doc.type === 'student') : []
 
+          if (req.query.userIsStudent === 'true') {
+            console.log('hier')
+            documents = documents.filter((doc) => doc.shared === true)
+          }
+
           if (documents.length) {
-            documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
+            documents = documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
           }
 
           return res.send({folder: folder, breadcrumbs: folder.breadcrumbs, documents: documents, students: students})
@@ -528,13 +607,16 @@ MongoClient.connect(
         .find(
           {$or: [
             {_id: ObjectID(req.params.userId)},
-            {teacherId: ObjectID(req.params.userId)},
+            {
+              teacherId: ObjectID(req.params.userId),
+              'socketIds.0': {$exists: true},
+            },
           ]}
         )
         .toArray()
         .then(results => {
           const user = results.find((user) => user._id == req.params.userId)
-          const students = results.filter((user) => user.teacherId == req.params.userId && user.online === true)
+          const students = results.filter((user) => user.teacherId == req.params.userId)
 
           return res.send({user: user, students: students})
         })
@@ -663,10 +745,11 @@ MongoClient.connect(
       db.collection('users')
         .findOneAndUpdate(
           { _id: ObjectID(socket.request._query.userId) },
-          { $set: {
-            online: true,
-            socketId: socket.id,
-          } },
+          {
+            $push: {
+              socketIds: socket.id,
+            }
+          },
         )
         .then(result => {
           console.log(`user "${result.value.username}" is online`)
@@ -677,48 +760,64 @@ MongoClient.connect(
             .find(
               { $or: [
                 { _id: ObjectID(result.value.teacherId) },
-                { teacherId: ObjectID(result.value.teacherId), online: true },
+                {
+                  teacherId: ObjectID(result.value.teacherId),
+                  'socketIds.0': {$exists: true},
+                },
               ]}
             )
             .toArray()
             .then(results => {
-              const teacherSocketId = results.find(user => user.type === 'teacher').socketId
-              const students = results.find(user => user.type === 'student')
-              socket.to(teacherSocketId).emit('connected students', students)
+              const teacherSocketIds = results.find(user => user.type === 'teacher').socketIds
+              const students = results.filter(user => user.type === 'student')
+              for (let i in teacherSocketIds) {
+                socket.to(teacherSocketIds[i]).emit('connected students', students)
+              }
             })
         })
         .catch(error => console.error(error))
 
       socket.on('disconnect', () => {
-        db.collection('users').findOneAndUpdate(
-          { socketId: socket.id },
-          { $set: {
-            online: false,
-            socketId: null,
-          } },
-        )
+        db.collection('users')
+          .findOneAndUpdate(
+            { socketIds: socket.id },
+            {
+              $pull: {
+                socketIds: socket.id,
+              }
+            },
+          )
           .then(result => {
             console.log(`user "${result.value.username}" is offline`)
 
             db.collection('documents')
-              .updateMany(
-                {
-                  lockedBy: ObjectID(result.value._id),
-                },
-                { $set: {
-                  locked: false,
-                  lockedBy: '',
-                }
-                }
-              )
+              .find({ lockedBy: ObjectID(result.value._id) })
+              .toArray()
               .then(docResults => {
-                console.log('wat')
 
-                db.collection('users')
-                  .find({teacherId: ObjectID(result.value.teacherId), online: true})
-                  .toArray()
-                  .then(results => {
-                    socket.broadcast.emit('connected students', results)
+                db.collection('documents')
+                  .updateMany(
+                    {
+                      lockedBy: ObjectID(result.value._id),
+                    },
+                    { $set: {
+                      locked: false,
+                      lockedBy: '',
+                    } }
+                  )
+                  .then(updatedDocResults => {
+                    db.collection('users')
+                      .find({
+                        teacherId: ObjectID(result.value.teacherId),
+                        'socketIds.0': { $exists: true },
+                      })
+                      .toArray()
+                      .then(results => {
+                        for (let i in docResults) {
+                          socket.broadcast.emit('document reload', docResults[i]._id)
+                        }
+                        socket.broadcast.emit('connected students', results)
+                      })
                   })
               })
           })
@@ -775,7 +874,6 @@ MongoClient.connect(
       })
 
       socket.on('document saved', (userId, documentId) => {
-        // console.log('document saved, should reload on others:', documentId)
         console.log(`user "${userId}" saved document "${documentId}"`)
 
         db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
@@ -846,3 +944,24 @@ MongoClient.connect(
 
   })
   .catch(error => console.error(error))
+
+
+
+// --- SEND EMAIL -- //
+// ----------------- //
+
+const sendEmail = (content) => {
+  const msg = {
+    to: content.emailTo,
+    from: 'Seldocs <hola@seldocs.com>',
+    subject: content.subject,
+    template_id: content.templateId,
+    dynamic_template_data: content.data
+  }
+
+  sendgridmail
+    .send(msg)
+    .catch((error) => {
+      console.error(error)
+    })
+}
