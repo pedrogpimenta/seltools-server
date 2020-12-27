@@ -207,12 +207,16 @@ MongoClient.connect(
     app.post('/login', (req, res) => {
       db.collection('users').findOne({email: req.body.email})
         .then(results => {
-          if(!!results && bcrypt.compareSync(req.body.password, results.password)) {
-            var payload = {_id: results._id};
-            var token = jwt.sign(payload, jwtOptions.secretOrKey);
-            res.json({message: "ok", token: token, user: results});
+          if (!!results) {
+            if(bcrypt.compareSync(req.body.password, results.password)) {
+              var payload = {_id: results._id};
+              var token = jwt.sign(payload, jwtOptions.secretOrKey);
+              res.json({message: "ok", token: token, user: results});
+            } else {
+              res.status(401).json({message:"Contraseña incorrecta."});
+            }
           } else {
-            res.status(401).json({message:"passwords did not match"});
+            res.status(401).json({message:"Usuario no encontrado. Verifica que tu email es correcto."});
           }
         })
     })
