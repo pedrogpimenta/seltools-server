@@ -123,7 +123,7 @@ function onListening() {
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: process.env.WS_ORIGIN_URI || "http://localhost:3001",
+    origin: process.env.WS_ORIGIN_URI || "http://192.168.1.100:3001",
     methods: ["GET", "POST"]
   }
 });
@@ -580,7 +580,6 @@ MongoClient.connect(
           const students = req.query.isTeacherFolder === 'true' ? results.filter((doc) => doc.type === 'student') : []
 
           if (req.query.userIsStudent === 'true') {
-            console.log('hier')
             documents = documents.filter((doc) => doc.shared === true)
           }
 
@@ -828,7 +827,7 @@ MongoClient.connect(
           .catch(error => console.error(error))
       })
 
-      socket.on('document close', (userId, documentId) => {
+      socket.on('document unlock', (userId, documentId) => {
         console.log(`user "${userId}" closed document "${documentId}"`)
 
         db.collection('documents')
@@ -915,17 +914,15 @@ MongoClient.connect(
             } },
           )
           .then(result => {
-            console.log('aj')
-            socket.broadcast.emit('save and lock document', userId, documentId)
+            socket.broadcast.emit('lock document', userId, documentId)
           })
           .catch(error => console.error(error))
       })
       
-      socket.on('document saved after unlock', (userId, documentId) => {
-        // console.log('document saved, should reload on others:', documentId)
-        console.log(`user "${userId}" saved document "${documentId}" after unlock`)
-        socket.broadcast.emit('document reload', documentId)
-      })
+      // socket.on('document saved after unlock', (userId, documentId) => {
+      //   console.log(`user "${userId}" saved document "${documentId}" after unlock`)
+      //   socket.broadcast.emit('document reload', documentId)
+      // })
     });
 
     // -- END SOCKETS -- //
@@ -955,17 +952,17 @@ MongoClient.connect(
 // ----------------- //
 
 const sendEmail = (content) => {
-  const msg = {
-    to: content.emailTo,
-    from: 'Seldocs <hola@seldocs.com>',
-    subject: content.subject,
-    template_id: content.templateId,
-    dynamic_template_data: content.data
-  }
+  // const msg = {
+  //   to: content.emailTo,
+  //   from: 'Seldocs <hola@seldocs.com>',
+  //   subject: content.subject,
+  //   template_id: content.templateId,
+  //   dynamic_template_data: content.data
+  // }
 
-  sendgridmail
-    .send(msg)
-    .catch((error) => {
-      console.error(error)
-    })
+  // sendgridmail
+  //   .send(msg)
+  //   .catch((error) => {
+  //     console.error(error)
+  //   })
 }
