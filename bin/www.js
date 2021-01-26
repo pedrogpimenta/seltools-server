@@ -457,6 +457,9 @@ MongoClient.connect(
               // All of this should be improved though
               document.files[file].content = ''
   
+              console.log('document.files[file].hidden:', document.files[file].hidden)
+              console.log('req.body.files[file].hidden:', req.body.files[file].hidden)
+
               document.files[file].id = req.body.files[file].id || document.files[file].id
               document.files[file].type = req.body.files[file].type || document.files[file].type
               document.files[file].name = req.body.files[file].name || document.files[file].name
@@ -466,7 +469,7 @@ MongoClient.connect(
               document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
               document.files[file].creator = req.body.files[file].creator || document.files[file].creator
               document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
-              document.files[file].hidden = req.body.files[file].hidden === true ? true : req.body.files[file].hidden === false ? false : document.files[file].hidden
+              document.files[file].hidden = typeof req.body.files[file].hidden === 'undefined' ? false : req.body.files[file].hidden === true ? true : req.body.files[file].hidden === false ? false : document.files[file].hidden
             }
           }
 
