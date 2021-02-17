@@ -15,12 +15,12 @@ const { MongoClient, ObjectID } = require('mongodb')
 const aws = require('aws-sdk')
 aws.config.update({
   region: 'eu-west-1', // Put your aws region here
-  accessKeyId: process.env.ACCESS_KEY_ID || 'AKIAJ4UOIGFPBDMUA75A',
-  secretAccessKey: process.env.SECRET_ACCESS_KEY || 'A5F/oBRWMBZG1IiRnNHY/0XPses/16LBLQpobXf/',
+  accessKeyId: process.env.ACCESS_KEY_ID,
+  secretAccessKey: process.env.SECRET_ACCESS_KEY,
 })
 
 const S3_BUCKET = 'seltools'
-sendgridmail.setApiKey('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')
+sendgridmail.setApiKey(process.env.SENDGRID_API_KEY)
 
 /**
  * Module dependencies.
