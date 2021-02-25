@@ -230,8 +230,6 @@ MongoClient.connect(
                 name: req.body.name,
                 type: req.body.type,
                 parent: req.body.teacher ? ObjectID(req.body.teacherFolder) : '',
-                level: 1,
-                ancestors: req.body.teacher ? [ObjectID(req.body.teacherFolder)] : [],
               })
               .then(results => {
                 db.collection('users').insertOne({
@@ -378,13 +376,9 @@ MongoClient.connect(
           console.log('req parent:', req.query.parent)
           console.log('results:', results)
           const parent = results
-          const ancestors = parent.ancestors || []
-          ancestors.push(ObjectID(req.query.parent))
 
           document.teacher = ObjectID(req.body.teacher) || document.teacher
           document.parent = ObjectID(document.parent)
-          document.ancestors = ancestors
-          document.level = parent.ancestors.length
           document.createDate = new Date()
           document.modifiedDate = new Date()
           document.modifiedBy = new Date()
@@ -436,13 +430,7 @@ MongoClient.connect(
           document.color = req.body.color || document.color
           document.shared = typeof req.body.shared === 'undefined' ? document.shared : req.body.shared
           if (!!req.body.parent) document.parent = ObjectID(req.body.parent) || document.parent
-          document.level = document.ancestors.length || document.level
           if (req.query.shouldUpdateDate === 'true') document.modifiedDate = new Date()
-          // document.modifiedBy = req.query.userId
-
-          // if (!!req.body.teacher) document.teacher = ObjectID(req.body.teacher) || document.teacher
-          // document.ancestors = document.ancestors
-          // document.sharedWith = req.body.sharedWith || document.sharedWith || []
 
           if (!!req.body.files) {
             if (req.body.files.length < document.files.length) {
@@ -473,7 +461,6 @@ MongoClient.connect(
             }
           }
 
-
           db.collection('documents').updateOne(
               { _id: ObjectID(req.params.id) },
               { $set: {
@@ -481,8 +468,6 @@ MongoClient.connect(
                 color: document.color,
                 // teacher: document.teacher,
                 parent: document.parent,
-                ancestors: document.ancestors,
-                level: document.level,
                 files: document.files,
                 shared: document.shared,
                 modifiedDate: document.modifiedDate,
@@ -509,15 +494,10 @@ MongoClient.connect(
           db.collection('documents').findOne({_id: ObjectID(req.body.parentId)})
             .then(result => {
 
-              const documentAncestors = result.ancestors
-              documentAncestors.push(ObjectID(req.body.parentId))
-
               db.collection('documents').updateOne(
                   { _id: ObjectID(req.params.id) },
                   { $set: {
                     parent: ObjectID(req.body.parentId),
-                    ancestors: documentAncestors,
-                    level: 0,
                   } },
                 )
                 .then(result => {
@@ -531,17 +511,31 @@ MongoClient.connect(
     // GET: one document
     app.get('/document/:id', (req, res) => {
       // TODO: should this be findOne ?
-      db.collection('documents').findOne({_id: ObjectID(req.params.id)})
+      db.collection('documents')
+        // .findOne({_id: ObjectID(req.params.id)})
+        .aggregate([
+          {
+            $graphLookup: {
+              from: 'documents',
+              startWith: "$parent",
+              connectFromField: "parent",
+              connectToField: "_id",
+              as: "breadcrumbs",
+              depthField: "depth",
+            }
+          },
+          {
+            $match: { 
+              _id: ObjectID(req.params.id),
+            }
+          }
+        ])
+        .toArray()
         .then(results => {
-          const document = results
-          db.collection('documents').find(
-            {_id: { $in: document.ancestors }})
-            .sort({level: 1}).toArray()
-            .then(results => {
-              return res.send({document: document, breadcrumbs: results})
-            })
+          const document = results[0]
+          const breadcrumbs = document.breadcrumbs.sort((a, b) => b.depth - a.depth)
 
-          // return res.send(results)
+          return res.send({document: document, breadcrumbs: breadcrumbs})
         })
     })
 
@@ -552,17 +546,19 @@ MongoClient.connect(
           return res.send(results)
         })
     })
-    
+
     // GET: documents
     app.get('/user/:userId/documents/:folderId', passport.authenticate('jwt', { session: false }), (req, res) => {
       db.collection('documents')
         .aggregate([
           {
-            $lookup: {
+            $graphLookup: {
               from: 'documents',
-              localField: 'ancestors',
-              foreignField: '_id',
-              as: 'breadcrumbs',
+              startWith: "$parent",
+              connectFromField: "parent",
+              connectToField: "_id",
+              as: "breadcrumbs",
+              depthField: "depth",
             }
           },
           {
@@ -581,6 +577,7 @@ MongoClient.connect(
           const folder = results.find((doc) => doc._id == req.params.folderId)
           let documents = results.filter((doc) => doc.parent == req.params.folderId)
           const students = req.query.isTeacherFolder === 'true' ? results.filter((doc) => doc.type === 'student') : []
+          const breadcrumbs = folder.breadcrumbs.sort((a, b) => b.depth - a.depth)
 
           if (req.query.userIsStudent === 'true') {
             documents = documents.filter((doc) => doc.shared === true)
@@ -590,10 +587,10 @@ MongoClient.connect(
             documents = documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
           }
 
-          return res.send({folder: folder, breadcrumbs: folder.breadcrumbs, documents: documents, students: students})
+          return res.send({folder: folder, breadcrumbs: breadcrumbs, documents: documents, students: students})
         })
     })
-
+        
     // ------ Student API ------ //
 
     // GET: one student
@@ -643,16 +640,11 @@ MongoClient.connect(
       console.log('id:', req.body.parent)
       db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
         .then(results => {
-          const ancestors = results.ancestors
-          ancestors.push(results._id)
-    
           db.collection('documents').insertOne({
               name: req.body.name,
               type: req.body.type,
               parent: ObjectID(req.body.parent),
               createDate: new Date(),
-              ancestors: ancestors,
-              level: ancestors.length,
             })
             .then(results => {
               if (req.body.type === 'folder') {
@@ -683,8 +675,6 @@ MongoClient.connect(
           type: 'student',
           parent: ObjectID(req.body.teacherFolder),
           createDate: new Date(),
-          ancestors: [ObjectID(req.body.teacherFolder)],
-          level: 1,
         })
         .then(results => {
           db.collection('users').insertOne({
