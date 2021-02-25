@@ -945,17 +945,20 @@ MongoClient.connect(
 // ----------------- //
 
 const sendEmail = (content) => {
-  // const msg = {
-  //   to: content.emailTo,
-  //   from: 'Seldocs <hola@seldocs.com>',
-  //   subject: content.subject,
-  //   template_id: content.templateId,
-  //   dynamic_template_data: content.data
-  // }
+  const msg = {
+    to: content.emailTo,
+    from: 'Seldocs <hola@seldocs.com>',
+    subject: content.subject,
+    template_id: content.templateId,
+    dynamic_template_data: content.data
+  }
 
-  // sendgridmail
-  //   .send(msg)
-  //   .catch((error) => {
-  //     console.error(error)
-  //   })
+  sendgridmail
+    .send(msg)
+    .then(() => {
+      console.log('email sent')
+    })
+    .catch((error) => {
+      console.error(error)
+    })
 }
