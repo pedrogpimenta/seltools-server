@@ -455,6 +455,7 @@ MongoClient.connect(
               document.files[file].markers = req.body.files[file].markers || document.files[file].markers
               document.files[file].content = req.body.files[file].content || document.files[file].content
               document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
+              document.files[file].lines = req.body.files[file].lines || document.files[file].lines
               document.files[file].creator = req.body.files[file].creator || document.files[file].creator
               document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
               document.files[file].hidden = typeof req.body.files[file].hidden === 'undefined' ? false : req.body.files[file].hidden === true ? true : req.body.files[file].hidden === false ? false : document.files[file].hidden
