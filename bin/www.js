@@ -1,15 +1,26 @@
 #!/usr/bin/env node
 
+const passport = require('passport')
+// const LocalStrategy = require('passport-local').Strategy
+const jwt = require('jsonwebtoken')
+const passportJWT = require('passport-jwt')
+const ExtractJwt = passportJWT.ExtractJwt
+const JwtStrategy = passportJWT.Strategy
+
+const bcrypt = require('bcrypt')
+const sendgridmail = require('@sendgrid/mail')
 const cloneDeep = require('lodash/cloneDeep')
 const { MongoClient, ObjectID } = require('mongodb')
+
 const aws = require('aws-sdk')
 aws.config.update({
   region: 'eu-west-1', // Put your aws region here
-  accessKeyId: process.env.ACCESS_KEY_ID || 'AKIAJ4UOIGFPBDMUA75A',
-  secretAccessKey: process.env.SECRET_ACCESS_KEY || 'A5F/oBRWMBZG1IiRnNHY/0XPses/16LBLQpobXf/',
+  accessKeyId: process.env.ACCESS_KEY_ID,
+  secretAccessKey: process.env.SECRET_ACCESS_KEY,
 })
 
 const S3_BUCKET = 'seltools'
+sendgridmail.setApiKey(process.env.SENDGRID_API_KEY)
 
 /**
  * Module dependencies.
@@ -110,13 +121,46 @@ function onListening() {
   debug('Listening on ' + bind);
 }
 
-
 const io = require('socket.io')(server, {
   cors: {
-    origin: process.env.WS_ORIGIN_URI || "http://localhost:3001",
+    origin: process.env.WS_ORIGIN_URI || "http://192.168.1.100:3001",
     methods: ["GET", "POST"]
   }
 });
+
+// Helper: guid generator
+const guidGenerator = () => {
+  var S4 = function() {
+    return (((1+Math.random())*0x10000)|0).toString(16).substring(1)
+  }
+
+  return (S4()+S4()+"-"+S4()+"-"+S4()+"-"+S4()+"-"+S4()+S4()+S4())
+}
+
+
+
+
+
+
+
+
+// const msg = {
+//   to: 'pedrogpimenta@gmail.com', // Change to your recipient
+//   from: 'seltools@hablaconsel.com', // Change to your verified sender
+//   subject: 'Sending with SendGrid is Fun',
+//   text: 'and easy to do anywhere, even with Node.js',
+//   html: '<strong>and easy to do anywhere, even with Node.js</strong>',
+// }
+// sendgridmail
+//   .send(msg)
+//   .then(() => {
+//     console.log('Email sent')
+//   })
+//   .catch((error) => {
+//     console.error(error)
+//   })
+
+
 
 
 
@@ -133,12 +177,189 @@ MongoClient.connect(
   .then(client => {
     console.log('Connected to db')
     const db = client.db('seltools')
-    // const files = db.collection('files')
+
+    // Reset connected users
+    
+    db.collection('users')
+      .updateMany(
+        {},
+        { $set: {
+          socketIds: [],
+        } }
+      )
+
+    // ----------------- //
+    // ----- AUTH ------ //
+
+    const jwtOptions = {}
+    jwtOptions.jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken();
+    jwtOptions.secretOrKey = 'iWantToLiveInACyberpunkWorld';
+
+    const strategy = new JwtStrategy(jwtOptions, function(jwt_payload, next) {
+      db.collection('users').findOne({jwtId: jwt_payload.id})
+        .then(results => {
+          next(null, results);
+        })
+    });
+
+    passport.use(strategy);
+
+    app.post('/login', (req, res) => {
+      db.collection('users').findOne({email: req.body.email})
+        .then(results => {
+          if (!!results) {
+            if(bcrypt.compareSync(req.body.password, results.password)) {
+              var payload = {_id: results._id};
+              var token = jwt.sign(payload, jwtOptions.secretOrKey);
+              res.json({message: "ok", token: token, user: results});
+            } else {
+              res.status(401).json({message:"Contraseña incorrecta."});
+            }
+          } else {
+            res.status(401).json({message:"Usuario no encontrado. Verifica que tu email es correcto."});
+          }
+        })
+    })
+    
+    app.post('/register', (req, res) => {
+      db.collection('users').findOne({email: req.body.email})
+        .then(userResults => {
+          if(!userResults) {
+            db.collection('documents')
+              .insertOne({
+                name: req.body.name,
+                type: req.body.type,
+                parent: req.body.teacher ? ObjectID(req.body.teacherFolder) : '',
+              })
+              .then(results => {
+                db.collection('users').insertOne({
+                    email: req.body.email,
+                    password: bcrypt.hashSync(req.body.password, 10),
+                    username: req.body.name,
+                    type: req.body.type,
+                    userfolder: ObjectID(results.insertedId),
+                  })
+                  .then(newUserResults => {
+                    res.json({
+                      message: 'ok',
+                      newUserId: newUserResults.insertedId
+                    });
+                    
+                    sendEmail({
+                      emailTo: req.body.email,
+                      templateId: 'd-7ec80a58953347ffb97693624419570b',
+                      data: {
+                        seltools_color: '#F87361',
+                        user_email: req.body.email,
+                      },
+                    })
+                  })
+              })
+          } else if (userResults && userResults.type !== 'teacher' && !userResults.userHasRegistered) {
+            db.collection('users').updateOne(
+              { email: req.body.email},
+              { $set: {
+                username: req.body.name,
+                email: req.body.email,
+                password: bcrypt.hashSync(req.body.password, 10),
+                userHasRegistered: true,
+              }})
+              .then(newUserResults => {
+                res.json({
+                  message: 'ok',
+                  newUserResults: newUserResults,
+                })
+
+                sendEmail({
+                  emailTo: req.body.email,
+                  subject: '¡Ya puedes acceder a tus documentos!',
+                  templateId: 'd-9b4951a462e247f5ad4586c77edec147',
+                  data: {
+                    seltools_color: '#F87361',
+                    user_name: req.body.name,
+                  },
+                })
+              })
+          } else {
+            res.json({
+              message: 'error',
+              details: 'Este email ya fue utilizado',
+            })
+          }
+        })
+    })
+
+    app.post('/recover', (req, res) => {
+      const tempRecovery = guidGenerator()
+
+      db.collection('users')
+        .findOneAndUpdate(
+          { email: req.body.email },
+          { $set: {
+            tempRecovery: tempRecovery,
+          } }
+        )
+        .then(results => {
+          if(!!results) {
+            res.json({message: "ok"});
+
+            sendEmail({
+              emailTo: req.body.email,
+              subject: 'Recuperar cuenta',
+              templateId: 'd-605e13ccd74141c5aa486a8b54c7e53d',
+              data: {
+                seltools_color: '#F87361',
+                temp_recovery: tempRecovery,
+              }
+            })
+          }
+        })
+    })
+
+    app.get('/resetexists/:recoveryId', (req, res) => {
+
+      db.collection('users')
+        .findOne({ tempRecovery: req.params.recoveryId })
+        .then(results => {
+          if (results) {
+            res.json({message: "ok"});
+          } else {
+            res.json({message: "no"});
+          }
+        })
+    })
+    
+    app.post('/resetpass/:recoveryId', (req, res) => {
+      db.collection('users')
+        .findOneAndUpdate(
+          { tempRecovery: req.params.recoveryId },
+          {
+            $unset: {
+              tempRecovery: '',
+            },
+            $set: {
+              password: bcrypt.hashSync(req.body.password, 10),
+            },
+          }
+        )
+        .then(results => {
+          res.json({message: "ok"});
+
+          // sendEmail({
+          //   emailTo: req.body.email,
+          //   subject: 'Recuperar cuenta',
+          //   templateId: 'd-605e13ccd74141c5aa486a8b54c7e53d',
+          //   data: {
+          //     seltools_color: '#F87361',
+          //   }
+          // })
+        })
+    })
+
 
     // ----------------- //
     // ------ API ------ //
 
-    // TODO: This doesn't do anything
     app.get('/', (req, res) => {
       return res.send('You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>')
     })
@@ -155,13 +376,9 @@ MongoClient.connect(
           console.log('req parent:', req.query.parent)
           console.log('results:', results)
           const parent = results
-          const ancestors = parent.ancestors || []
-          ancestors.push(ObjectID(req.query.parent))
 
           document.teacher = ObjectID(req.body.teacher) || document.teacher
           document.parent = ObjectID(document.parent)
-          document.ancestors = ancestors
-          document.level = parent.ancestors.length
           document.createDate = new Date()
           document.modifiedDate = new Date()
           document.modifiedBy = new Date()
@@ -175,8 +392,8 @@ MongoClient.connect(
         })
     })
 
-    // POST new document
-    app.post('/documentclone/:documentId', (req, res) => {
+    // POST clone document
+    app.post('/documentclone/:documentId', passport.authenticate('jwt', { session: false }), (req, res) => {
       console.log('CLONE')
 
       db.collection('documents').findOne({_id: ObjectID(req.params.documentId)})
@@ -200,10 +417,12 @@ MongoClient.connect(
     })
 
     // PUT document
-    app.put('/document/:id', (req, res) => {
+    app.put('/document/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       console.log('PUT')
 
-      db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
+      db.collection('documents')
+        .find({_id: ObjectID(req.params.id)})
+        .toArray()
         .then(results => {
           const document = cloneDeep(results[0])
 
@@ -211,13 +430,7 @@ MongoClient.connect(
           document.color = req.body.color || document.color
           document.shared = typeof req.body.shared === 'undefined' ? document.shared : req.body.shared
           if (!!req.body.parent) document.parent = ObjectID(req.body.parent) || document.parent
-          document.level = document.ancestors.length || document.level
           if (req.query.shouldUpdateDate === 'true') document.modifiedDate = new Date()
-          // document.modifiedBy = req.query.userId
-
-          // if (!!req.body.teacher) document.teacher = ObjectID(req.body.teacher) || document.teacher
-          // document.ancestors = document.ancestors
-          // document.sharedWith = req.body.sharedWith || document.sharedWith || []
 
           if (!!req.body.files) {
             if (req.body.files.length < document.files.length) {
@@ -232,6 +445,9 @@ MongoClient.connect(
               // All of this should be improved though
               document.files[file].content = ''
   
+              console.log('document.files[file].hidden:', document.files[file].hidden)
+              console.log('req.body.files[file].hidden:', req.body.files[file].hidden)
+
               document.files[file].id = req.body.files[file].id || document.files[file].id
               document.files[file].type = req.body.files[file].type || document.files[file].type
               document.files[file].name = req.body.files[file].name || document.files[file].name
@@ -239,12 +455,12 @@ MongoClient.connect(
               document.files[file].markers = req.body.files[file].markers || document.files[file].markers
               document.files[file].content = req.body.files[file].content || document.files[file].content
               document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
+              document.files[file].lines = req.body.files[file].lines || document.files[file].lines
               document.files[file].creator = req.body.files[file].creator || document.files[file].creator
               document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
-              document.files[file].hidden = req.body.files[file].hidden === true ? true : req.body.files[file].hidden === false ? false : document.files[file].hidden
+              document.files[file].hidden = typeof req.body.files[file].hidden === 'undefined' ? false : req.body.files[file].hidden === true ? true : req.body.files[file].hidden === false ? false : document.files[file].hidden
             }
           }
-
 
           db.collection('documents').updateOne(
               { _id: ObjectID(req.params.id) },
@@ -253,8 +469,6 @@ MongoClient.connect(
                 color: document.color,
                 // teacher: document.teacher,
                 parent: document.parent,
-                ancestors: document.ancestors,
-                level: document.level,
                 files: document.files,
                 shared: document.shared,
                 modifiedDate: document.modifiedDate,
@@ -271,7 +485,7 @@ MongoClient.connect(
     })
     
     // MOVE document
-    app.put('/documentmove/:id', (req, res) => {
+    app.put('/documentmove/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       console.log('MOVE')
 
       db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
@@ -281,15 +495,10 @@ MongoClient.connect(
           db.collection('documents').findOne({_id: ObjectID(req.body.parentId)})
             .then(result => {
 
-              const documentAncestors = result.ancestors
-              documentAncestors.push(ObjectID(req.body.parentId))
-
               db.collection('documents').updateOne(
                   { _id: ObjectID(req.params.id) },
                   { $set: {
                     parent: ObjectID(req.body.parentId),
-                    ancestors: documentAncestors,
-                    level: 0,
                   } },
                 )
                 .then(result => {
@@ -303,38 +512,54 @@ MongoClient.connect(
     // GET: one document
     app.get('/document/:id', (req, res) => {
       // TODO: should this be findOne ?
-      db.collection('documents').findOne({_id: ObjectID(req.params.id)})
+      db.collection('documents')
+        // .findOne({_id: ObjectID(req.params.id)})
+        .aggregate([
+          {
+            $graphLookup: {
+              from: 'documents',
+              startWith: "$parent",
+              connectFromField: "parent",
+              connectToField: "_id",
+              as: "breadcrumbs",
+              depthField: "depth",
+            }
+          },
+          {
+            $match: { 
+              _id: ObjectID(req.params.id),
+            }
+          }
+        ])
+        .toArray()
         .then(results => {
-          const document = results
-          db.collection('documents').find(
-            {_id: { $in: document.ancestors }})
-            .sort({level: 1}).toArray()
-            .then(results => {
-              return res.send({document: document, breadcrumbs: results})
-            })
+          const document = results[0]
+          const breadcrumbs = document.breadcrumbs.sort((a, b) => b.depth - a.depth)
 
-          // return res.send(results)
+          return res.send({document: document, breadcrumbs: breadcrumbs})
         })
     })
 
     // DELETE one document
-    app.delete('/document/:id', (req, res) => {
+    app.delete('/document/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       db.collection('documents').deleteOne({_id: ObjectID(req.params.id)})
         .then(results => {
           return res.send(results)
         })
     })
-    
+
     // GET: documents
-    app.get('/user/:userId/documents/:folderId', (req, res) => {
+    app.get('/user/:userId/documents/:folderId', passport.authenticate('jwt', { session: false }), (req, res) => {
       db.collection('documents')
         .aggregate([
           {
-            $lookup: {
+            $graphLookup: {
               from: 'documents',
-              localField: 'ancestors',
-              foreignField: '_id',
-              as: 'breadcrumbs',
+              startWith: "$parent",
+              connectFromField: "parent",
+              connectToField: "_id",
+              as: "breadcrumbs",
+              depthField: "depth",
             }
           },
           {
@@ -351,54 +576,76 @@ MongoClient.connect(
         .toArray()
         .then(results => {
           const folder = results.find((doc) => doc._id == req.params.folderId)
-          const documents = results.filter((doc) => doc.parent == req.params.folderId)
-          const students = req.query.isTeacherFolder == 'true' ? results.filter((doc) => doc.type === 'student') : []
+          let documents = results.filter((doc) => doc.parent == req.params.folderId)
+          const students = req.query.isTeacherFolder === 'true' ? results.filter((doc) => doc.type === 'student') : []
+          const breadcrumbs = folder.breadcrumbs.sort((a, b) => b.depth - a.depth)
 
-          if (documents.length) {
-            documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
+          if (req.query.userIsStudent === 'true') {
+            documents = documents.filter((doc) => doc.shared === true)
           }
 
-          return res.send({folder: folder, breadcrumbs: folder.breadcrumbs, documents: documents, students: students})
+          if (documents.length) {
+            documents = documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
+          }
+
+          return res.send({folder: folder, breadcrumbs: breadcrumbs, documents: documents, students: students})
         })
     })
-
-
+        
     // ------ Student API ------ //
 
     // GET: one student
-    app.get('/student/:name', (req, res) => {
-      db.collection('users').findOne({username: req.params.name})
-        .then(results => {
-          return res.send(results)
-        })
-    })
+    // app.get('/student/:name', (req, res) => {
+    //   db.collection('users').findOne({username: req.params.name})
+    //     .then(results => {
+    //       return res.send(results)
+    //     })
+    // })
+
 
     // ------ User API ------ //
     
     // GET: one user
-    app.get('/user/:name', (req, res) => {
-      db.collection('users').findOne({username: req.params.name})
+    app.get('/user/:userId', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('users')
+        .find(
+          {$or: [
+            {_id: ObjectID(req.params.userId)},
+            {
+              teacherId: ObjectID(req.params.userId),
+              'socketIds.0': {$exists: true},
+            },
+          ]}
+        )
+        .toArray()
         .then(results => {
-          return res.send({user: results})
+          const user = results.find((user) => user._id == req.params.userId)
+          const students = results.filter((user) => user.teacherId == req.params.userId)
+
+          return res.send({user: user, students: students})
+        })
+    })
+
+    // GET: one user name
+    app.get('/username/:userId', (req, res) => {
+      db.collection('users').findOne({_id: ObjectID(req.params.userId)})
+        .then(results => {
+          return res.send({username: results.username, userfolder: results.userfolder})
         })
     })
 
     // ------ Folders API ------ //
 
     // POST: new folder
-    app.post('/folder', (req, res) => {
+    app.post('/folder', passport.authenticate('jwt', { session: false }), (req, res) => {
+      console.log('id:', req.body.parent)
       db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
         .then(results => {
-          const ancestors = results.ancestors
-          ancestors.push(results._id)
-    
           db.collection('documents').insertOne({
               name: req.body.name,
               type: req.body.type,
               parent: ObjectID(req.body.parent),
               createDate: new Date(),
-              ancestors: ancestors,
-              level: ancestors.length,
             })
             .then(results => {
               if (req.body.type === 'folder') {
@@ -421,7 +668,35 @@ MongoClient.connect(
             .catch(error => console.error(error))
         })
     })
+
+    app.post('/newStudent', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('documents')
+        .insertOne({
+          name: req.body.name,
+          type: 'student',
+          parent: ObjectID(req.body.teacherFolder),
+          createDate: new Date(),
+        })
+        .then(results => {
+          db.collection('users').insertOne({
+            username: req.body.name,
+            email: req.body.email,
+            type: 'student',
+            userfolder: results.insertedId,
+            userHasRegistered: false,
+            teacherId: ObjectID(req.body.teacherId),
+          })
+          .then(results => {
+            res.send(results)
+          })
+        .catch(error => console.error(error))
+      })
+    })
+
     
+
+    // ------ AWS API ------ //
+
     // FILE AWS S3 BUCKET
     app.post('/sign_s3', (req, res) => {
       const s3 = new aws.S3({signatureVersion: 'v4'})  // Create a new instance of S3
@@ -462,39 +737,116 @@ MongoClient.connect(
     // - BEGIN SOCKETS - //
     // ----------------- //
 
-    let connectedClients = []
-
     io.on('connection', socket => {
-      console.log('client connected:', socket.id)
-      // console.log('client connected', socket)
-    
-      socket.on('disconnect', (reason) => {
-        console.log('client disconnected:', socket.id)
-        const disconnectingClient = connectedClients.find(client => client.socketId === socket.id)
-        const newConnectedClients = connectedClients.filter(client => client.socketId !== socket.id)
-        connectedClients = newConnectedClients
+      // Save user as online
+      db.collection('users')
+        .findOneAndUpdate(
+          { _id: ObjectID(socket.request._query.userId) },
+          {
+            $push: {
+              socketIds: socket.id,
+            }
+          },
+        )
+        .then(result => {
+          console.log(`user "${result.value.username}" is online`)
 
-        if (!disconnectingClient) return false
+          if (result.value.type === 'teacher') return
 
-        db.collection('documents').updateOne(
-            { lockedBy: ObjectID(disconnectingClient.userId) },
-            { $set: {
-              locked: false,
-              lockedBy: null,
-            } },
+          db.collection('users')
+            .find(
+              { $or: [
+                { _id: ObjectID(result.value.teacherId) },
+                {
+                  teacherId: ObjectID(result.value.teacherId),
+                  'socketIds.0': {$exists: true},
+                },
+              ]}
+            )
+            .toArray()
+            .then(results => {
+              const teacherSocketIds = results.find(user => user.type === 'teacher').socketIds
+              const students = results.filter(user => user.type === 'student')
+              for (let i in teacherSocketIds) {
+                socket.to(teacherSocketIds[i]).emit('connected students', students)
+              }
+            })
+        })
+        .catch(error => console.error(error))
+
+      socket.on('disconnect', () => {
+        db.collection('users')
+          .findOneAndUpdate(
+            { socketIds: socket.id },
+            {
+              $pull: {
+                socketIds: socket.id,
+              }
+            },
           )
           .then(result => {
-            socket.broadcast.emit('document reload', disconnectingClient.documentId)
+            console.log(`user "${result.value.username}" is offline`)
+
+            db.collection('documents')
+              .find({ lockedBy: ObjectID(result.value._id) })
+              .toArray()
+              .then(docResults => {
+
+                db.collection('documents')
+                  .updateMany(
+                    {
+                      lockedBy: ObjectID(result.value._id),
+                    },
+                    { $set: {
+                      locked: false,
+                      lockedBy: '',
+                    } }
+                  )
+                  .then(updatedDocResults => {
+                    db.collection('users')
+                      .find({
+                        teacherId: ObjectID(result.value.teacherId),
+                        'socketIds.0': { $exists: true },
+                      })
+                      .toArray()
+                      .then(results => {
+                        for (let i in docResults) {
+                          socket.broadcast.emit('document reload', docResults[i]._id)
+                        }
+                        socket.broadcast.emit('connected students', results)
+                      })
+                  })
+              })
           })
           .catch(error => console.error(error))
       })
 
+      socket.on('document unlock', (userId, documentId) => {
+        console.log(`user "${userId}" closed document "${documentId}"`)
+
+        db.collection('documents')
+          .updateMany(
+              {
+                _id: ObjectID(documentId),
+                lockedBy: ObjectID(userId),
+              },
+              { $set: {
+                locked: false,
+                lockedBy: '',
+              }
+            }
+          )
+          .then(docResults => {
+              socket.broadcast.emit('document reload', documentId)
+          })
+      })
+
       socket.on('document open', (userId, documentId) => {
         console.log(`user "${userId}" opened document "${documentId}"`)
-        connectedClients.push({socketId: socket.id, userId: userId, documentId: documentId})
-        // console.log('connectedClients:', connectedClients)
 
-        db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
+        db.collection('documents')
+          .find({_id: ObjectID(documentId)})
+          .toArray()
           .then(results => {
             const document = cloneDeep(results[0])
 
@@ -519,7 +871,6 @@ MongoClient.connect(
       })
 
       socket.on('document saved', (userId, documentId) => {
-        // console.log('document saved, should reload on others:', documentId)
         console.log(`user "${userId}" saved document "${documentId}"`)
 
         db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
@@ -557,17 +908,15 @@ MongoClient.connect(
             } },
           )
           .then(result => {
-            console.log('aj')
-            socket.broadcast.emit('save and lock document', userId, documentId)
+            socket.broadcast.emit('lock document', userId, documentId)
           })
           .catch(error => console.error(error))
       })
       
-      socket.on('document saved after unlock', (userId, documentId) => {
-        // console.log('document saved, should reload on others:', documentId)
-        console.log(`user "${userId}" saved document "${documentId}" after unlock`)
-        socket.broadcast.emit('document reload', documentId)
-      })
+      // socket.on('document saved after unlock', (userId, documentId) => {
+      //   console.log(`user "${userId}" saved document "${documentId}" after unlock`)
+      //   socket.broadcast.emit('document reload', documentId)
+      // })
     });
 
     // -- END SOCKETS -- //
@@ -575,49 +924,42 @@ MongoClient.connect(
 
 
 
+    // --- TEMP API ---- //
+    // ----------------- //
+
+    // app.get('/deleteall', (req, res) => {
+    //   db.collection('documents')
+    //     .deleteMany({name: {$not: /Sel/}})
+    //     .then(results => {
+    //       return res.send('done')
+    //     })
+    // })
 
 
-    // ---- TEMP API v2.0 ---- //
-
-    app.get('/deletealldocuments', (req, res) => {
-      console.log('delete all')
-      db.collection('documents').removeMany({})
-    })
-    app.get('/insertselen', (req, res) => {
-      console.log('insert selen')
-      db.collection('documents').insertOne(
-        {
-          "name": "Selen",
-          "type": 'teacher',
-          "parent": '',
-          "ancestors": [],
-          "level": 0,
-        }) 
-    })
-    app.get('/resetdocs', (req, res) => {
-      console.log('reset docs')
-      db.collection('documents').update({},
-        {$set : {
-          "parent": ObjectID('5fc2b5aab8d35a3cb835ed71'),
-          "type": 'document',
-          "level": 1,
-          "ancestors": [ObjectID('5fc2b5aab8d35a3cb835ed71')],
-        }},
-        {upsert:false,
-        multi:true}) 
-    })
-    app.get('/resetselen', (req, res) => {
-      console.log('reset selen')
-      db.collection('documents').updateOne({name: "Selen"},
-        {$set : {
-          "parent": '',
-          "type": 'teacher',
-          "level": 0,
-          "ancestors": [],
-        }},
-        {upsert:false,
-        multi:true}) 
-    })
 
   })
   .catch(error => console.error(error))
+
+
+
+// --- SEND EMAIL -- //
+// ----------------- //
+
+const sendEmail = (content) => {
+  const msg = {
+    to: content.emailTo,
+    from: 'Seldocs <hola@seldocs.com>',
+    subject: content.subject,
+    template_id: content.templateId,
+    dynamic_template_data: content.data
+  }
+
+  sendgridmail
+    .send(msg)
+    .then(() => {
+      console.log('email sent')
+    })
+    .catch((error) => {
+      console.error(error)
+    })
+}
