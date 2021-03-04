@@ -144,21 +144,6 @@ const guidGenerator = () => {
 
 
 
-// const msg = {
-//   to: 'pedrogpimenta@gmail.com', // Change to your recipient
-//   from: 'seltools@hablaconsel.com', // Change to your verified sender
-//   subject: 'Sending with SendGrid is Fun',
-//   text: 'and easy to do anywhere, even with Node.js',
-//   html: '<strong>and easy to do anywhere, even with Node.js</strong>',
-// }
-// sendgridmail
-//   .send(msg)
-//   .then(() => {
-//     console.log('Email sent')
-//   })
-//   .catch((error) => {
-//     console.error(error)
-//   })
 
 
 
@@ -373,8 +358,6 @@ MongoClient.connect(
 
       db.collection('documents').findOne({_id: ObjectID(req.query.parent)})
         .then(results => {
-          console.log('req parent:', req.query.parent)
-          console.log('results:', results)
           const parent = results
 
           document.teacher = ObjectID(req.body.teacher) || document.teacher
@@ -445,9 +428,6 @@ MongoClient.connect(
               // All of this should be improved though
               document.files[file].content = ''
   
-              console.log('document.files[file].hidden:', document.files[file].hidden)
-              console.log('req.body.files[file].hidden:', req.body.files[file].hidden)
-
               document.files[file].id = req.body.files[file].id || document.files[file].id
               document.files[file].type = req.body.files[file].type || document.files[file].type
               document.files[file].name = req.body.files[file].name || document.files[file].name
@@ -595,13 +575,41 @@ MongoClient.connect(
     // ------ Student API ------ //
 
     // GET: one student
-    // app.get('/student/:name', (req, res) => {
-    //   db.collection('users').findOne({username: req.params.name})
-    //     .then(results => {
-    //       return res.send(results)
-    //     })
-    // })
+    app.get('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('users').findOne({userfolder: ObjectID(req.params.id)})
+        .then(results => {
+          return res.send(results)
+        })
+    })
 
+    // PUT: one student
+    app.put('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
+      console.log('PUT student')
+
+      db.collection('users').updateOne(
+          { _id: ObjectID(req.params.id) },
+          { $set: {
+            username: req.body.username,
+            email: req.body.email,
+          } },
+        )
+        .then((userResult) => {
+
+          db.collection('documents').updateOne(
+            { _id: ObjectID(req.body.userfolder) },
+            { $set: {
+              name: req.body.username,
+            } },
+          )
+          .then(() => {
+            return res.send(userResult)
+          })
+          .catch(error => console.error(error))
+
+          // return res.send(userResult)
+        })
+        .catch(error => console.error(error))
+    })
 
     // ------ User API ------ //
     
@@ -638,7 +646,6 @@ MongoClient.connect(
 
     // POST: new folder
     app.post('/folder', passport.authenticate('jwt', { session: false }), (req, res) => {
-      console.log('id:', req.body.parent)
       db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
         .then(results => {
           db.collection('documents').insertOne({
@@ -692,8 +699,6 @@ MongoClient.connect(
         .catch(error => console.error(error))
       })
     })
-
-    
 
     // ------ AWS API ------ //
 
