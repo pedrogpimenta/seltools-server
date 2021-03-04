@@ -345,7 +345,7 @@ MongoClient.connect(
     // ----------------- //
     // ------ API ------ //
 
-    app.get('/', (req, res) => {
+    app.get('/', (res) => {
       return res.send('You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>')
     })
 
@@ -574,7 +574,32 @@ MongoClient.connect(
         
     // ------ Student API ------ //
 
-    // GET: one student
+    // POST: one student folder & user
+    app.post('/newStudent', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('documents')
+        .insertOne({
+          name: req.body.name,
+          type: 'student',
+          parent: ObjectID(req.body.teacherFolder),
+          createDate: new Date(),
+        })
+        .then(results => {
+          db.collection('users').insertOne({
+            username: req.body.name,
+            email: req.body.email,
+            type: 'student',
+            userfolder: results.insertedId,
+            userHasRegistered: false,
+            teacherId: ObjectID(req.body.teacherId),
+          })
+          .then(() => {
+            res.send('ok')
+          })
+        .catch(error => console.error(error))
+      })
+    })
+
+    // GET: one student user
     app.get('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       db.collection('users').findOne({userfolder: ObjectID(req.params.id)})
         .then(results => {
@@ -582,7 +607,7 @@ MongoClient.connect(
         })
     })
 
-    // PUT: one student
+    // PUT: one student folder & user
     app.put('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
       console.log('PUT student')
 
@@ -610,6 +635,24 @@ MongoClient.connect(
         })
         .catch(error => console.error(error))
     })
+    
+    // DELETE: one student folder & user
+    app.delete('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
+      console.log('DELETE student')
+
+      db.collection('users')
+        .deleteOne({userfolder: ObjectID(req.params.id)})
+        .then(() => {
+          db.collection('documents')
+            .deleteOne({_id: ObjectID(req.params.id)})
+            .then(results => {
+
+              return res.send(results)
+            })
+
+        })
+    })
+
 
     // ------ User API ------ //
     
@@ -635,12 +678,12 @@ MongoClient.connect(
     })
 
     // GET: one user name
-    app.get('/username/:userId', (req, res) => {
-      db.collection('users').findOne({_id: ObjectID(req.params.userId)})
-        .then(results => {
-          return res.send({username: results.username, userfolder: results.userfolder})
-        })
-    })
+    // app.get('/username/:userId', (req, res) => {
+    //   db.collection('users').findOne({_id: ObjectID(req.params.userId)})
+    //     .then(results => {
+    //       return res.send({username: results.username, userfolder: results.userfolder})
+    //     })
+    // })
 
     // ------ Folders API ------ //
 
@@ -676,29 +719,6 @@ MongoClient.connect(
         })
     })
 
-    app.post('/newStudent', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('documents')
-        .insertOne({
-          name: req.body.name,
-          type: 'student',
-          parent: ObjectID(req.body.teacherFolder),
-          createDate: new Date(),
-        })
-        .then(results => {
-          db.collection('users').insertOne({
-            username: req.body.name,
-            email: req.body.email,
-            type: 'student',
-            userfolder: results.insertedId,
-            userHasRegistered: false,
-            teacherId: ObjectID(req.body.teacherId),
-          })
-          .then(results => {
-            res.send(results)
-          })
-        .catch(error => console.error(error))
-      })
-    })
 
     // ------ AWS API ------ //
 
