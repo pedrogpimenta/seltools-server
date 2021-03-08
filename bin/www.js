@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+require('dotenv').config()
+
 const passport = require('passport')
 // const LocalStrategy = require('passport-local').Strategy
 const jwt = require('jsonwebtoken')
@@ -37,7 +39,7 @@ var http = require('http');
  * Get port from environment and store in Express.
  */
 
-var port = normalizePort(process.env.PORT || '3000');
+var port = normalizePort(process.env.PORT);
 app.set('port', port);
 app.use(cors({
   credentials: true,
@@ -123,7 +125,7 @@ function onListening() {
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: process.env.WS_ORIGIN_URI || "http://192.168.1.100:3001",
+    origin: process.env.WS_ORIGIN_URI,
     methods: ["GET", "POST"]
   }
 });
@@ -154,8 +156,7 @@ const guidGenerator = () => {
  */
 
 MongoClient.connect(
-  process.env.MONGODB_URI ||
-  'mongodb://localhost:27017/seltools', {
+  process.env.MONGODB_URI, {
     useUnifiedTopology: true
   }
 )
@@ -340,6 +341,9 @@ MongoClient.connect(
           // })
         })
     })
+
+
+
 
 
     // ----------------- //
@@ -947,25 +951,8 @@ MongoClient.connect(
     // -- END SOCKETS -- //
     // ----------------- //
 
-
-
-    // --- TEMP API ---- //
-    // ----------------- //
-
-    // app.get('/deleteall', (req, res) => {
-    //   db.collection('documents')
-    //     .deleteMany({name: {$not: /Sel/}})
-    //     .then(results => {
-    //       return res.send('done')
-    //     })
-    // })
-
-
-
   })
   .catch(error => console.error(error))
-
-
 
 // --- SEND EMAIL -- //
 // ----------------- //
