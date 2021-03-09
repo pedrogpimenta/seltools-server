@@ -349,7 +349,7 @@ MongoClient.connect(
     // ----------------- //
     // ------ API ------ //
 
-    app.get('/', (res) => {
+    app.get('/', (req, res) => {
       return res.send('You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>')
     })
 
