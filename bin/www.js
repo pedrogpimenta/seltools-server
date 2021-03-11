@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+require('dotenv').config()
+
 const passport = require('passport')
 // const LocalStrategy = require('passport-local').Strategy
 const jwt = require('jsonwebtoken')
@@ -37,7 +39,7 @@ var http = require('http');
  * Get port from environment and store in Express.
  */
 
-var port = normalizePort(process.env.PORT || '3000');
+var port = normalizePort(process.env.PORT);
 app.set('port', port);
 app.use(cors({
   credentials: true,
@@ -123,7 +125,7 @@ function onListening() {
 
 const io = require('socket.io')(server, {
   cors: {
-    origin: process.env.WS_ORIGIN_URI || "http://192.168.1.100:3001",
+    origin: process.env.WS_ORIGIN_URI,
     methods: ["GET", "POST"]
   }
 });
@@ -144,21 +146,6 @@ const guidGenerator = () => {
 
 
 
-// const msg = {
-//   to: 'pedrogpimenta@gmail.com', // Change to your recipient
-//   from: 'seltools@hablaconsel.com', // Change to your verified sender
-//   subject: 'Sending with SendGrid is Fun',
-//   text: 'and easy to do anywhere, even with Node.js',
-//   html: '<strong>and easy to do anywhere, even with Node.js</strong>',
-// }
-// sendgridmail
-//   .send(msg)
-//   .then(() => {
-//     console.log('Email sent')
-//   })
-//   .catch((error) => {
-//     console.error(error)
-//   })
 
 
 
@@ -169,8 +156,7 @@ const guidGenerator = () => {
  */
 
 MongoClient.connect(
-  process.env.MONGODB_URI ||
-  'mongodb://localhost:27017/seltools', {
+  process.env.MONGODB_URI, {
     useUnifiedTopology: true
   }
 )
@@ -357,6 +343,9 @@ MongoClient.connect(
     })
 
 
+
+
+
     // ----------------- //
     // ------ API ------ //
 
@@ -373,8 +362,6 @@ MongoClient.connect(
 
       db.collection('documents').findOne({_id: ObjectID(req.query.parent)})
         .then(results => {
-          console.log('req parent:', req.query.parent)
-          console.log('results:', results)
           const parent = results
 
           document.teacher = ObjectID(req.body.teacher) || document.teacher
@@ -445,9 +432,6 @@ MongoClient.connect(
               // All of this should be improved though
               document.files[file].content = ''
   
-              console.log('document.files[file].hidden:', document.files[file].hidden)
-              console.log('req.body.files[file].hidden:', req.body.files[file].hidden)
-
               document.files[file].id = req.body.files[file].id || document.files[file].id
               document.files[file].type = req.body.files[file].type || document.files[file].type
               document.files[file].name = req.body.files[file].name || document.files[file].name
@@ -594,13 +578,84 @@ MongoClient.connect(
         
     // ------ Student API ------ //
 
-    // GET: one student
-    // app.get('/student/:name', (req, res) => {
-    //   db.collection('users').findOne({username: req.params.name})
-    //     .then(results => {
-    //       return res.send(results)
-    //     })
-    // })
+    // POST: one student folder & user
+    app.post('/newStudent', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('documents')
+        .insertOne({
+          name: req.body.name,
+          type: 'student',
+          parent: ObjectID(req.body.teacherFolder),
+          createDate: new Date(),
+        })
+        .then(results => {
+          db.collection('users').insertOne({
+            username: req.body.name,
+            email: req.body.email,
+            type: 'student',
+            userfolder: results.insertedId,
+            userHasRegistered: false,
+            teacherId: ObjectID(req.body.teacherId),
+          })
+          .then(() => {
+            res.send('ok')
+          })
+        .catch(error => console.error(error))
+      })
+    })
+
+    // GET: one student user
+    app.get('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
+      db.collection('users').findOne({userfolder: ObjectID(req.params.id)})
+        .then(results => {
+          return res.send(results)
+        })
+    })
+
+    // PUT: one student folder & user
+    app.put('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
+      console.log('PUT student')
+
+      db.collection('users').updateOne(
+          { _id: ObjectID(req.params.id) },
+          { $set: {
+            username: req.body.username,
+            email: req.body.email,
+          } },
+        )
+        .then((userResult) => {
+
+          db.collection('documents').updateOne(
+            { _id: ObjectID(req.body.userfolder) },
+            { $set: {
+              name: req.body.username,
+            } },
+          )
+          .then(() => {
+            return res.send(userResult)
+          })
+          .catch(error => console.error(error))
+
+          // return res.send(userResult)
+        })
+        .catch(error => console.error(error))
+    })
+    
+    // DELETE: one student folder & user
+    app.delete('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
+      console.log('DELETE student')
+
+      db.collection('users')
+        .deleteOne({userfolder: ObjectID(req.params.id)})
+        .then(() => {
+          db.collection('documents')
+            .deleteOne({_id: ObjectID(req.params.id)})
+            .then(results => {
+
+              return res.send(results)
+            })
+
+        })
+    })
 
 
     // ------ User API ------ //
@@ -627,18 +682,17 @@ MongoClient.connect(
     })
 
     // GET: one user name
-    app.get('/username/:userId', (req, res) => {
-      db.collection('users').findOne({_id: ObjectID(req.params.userId)})
-        .then(results => {
-          return res.send({username: results.username, userfolder: results.userfolder})
-        })
-    })
+    // app.get('/username/:userId', (req, res) => {
+    //   db.collection('users').findOne({_id: ObjectID(req.params.userId)})
+    //     .then(results => {
+    //       return res.send({username: results.username, userfolder: results.userfolder})
+    //     })
+    // })
 
     // ------ Folders API ------ //
 
     // POST: new folder
     app.post('/folder', passport.authenticate('jwt', { session: false }), (req, res) => {
-      console.log('id:', req.body.parent)
       db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
         .then(results => {
           db.collection('documents').insertOne({
@@ -669,31 +723,6 @@ MongoClient.connect(
         })
     })
 
-    app.post('/newStudent', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('documents')
-        .insertOne({
-          name: req.body.name,
-          type: 'student',
-          parent: ObjectID(req.body.teacherFolder),
-          createDate: new Date(),
-        })
-        .then(results => {
-          db.collection('users').insertOne({
-            username: req.body.name,
-            email: req.body.email,
-            type: 'student',
-            userfolder: results.insertedId,
-            userHasRegistered: false,
-            teacherId: ObjectID(req.body.teacherId),
-          })
-          .then(results => {
-            res.send(results)
-          })
-        .catch(error => console.error(error))
-      })
-    })
-
-    
 
     // ------ AWS API ------ //
 
@@ -922,25 +951,8 @@ MongoClient.connect(
     // -- END SOCKETS -- //
     // ----------------- //
 
-
-
-    // --- TEMP API ---- //
-    // ----------------- //
-
-    // app.get('/deleteall', (req, res) => {
-    //   db.collection('documents')
-    //     .deleteMany({name: {$not: /Sel/}})
-    //     .then(results => {
-    //       return res.send('done')
-    //     })
-    // })
-
-
-
   })
   .catch(error => console.error(error))
-
-
 
 // --- SEND EMAIL -- //
 // ----------------- //
