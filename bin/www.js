@@ -664,15 +664,28 @@ MongoClient.connect(
     // GET: one user
     app.get('/user/:userId', passport.authenticate('jwt', { session: false }), (req, res) => {
       db.collection('users')
-        .find(
-          {$or: [
-            {_id: ObjectID(req.params.userId)},
-            {
-              teacherId: ObjectID(req.params.userId),
-              'socketIds.0': {$exists: true},
-            },
-          ]}
-        )
+        .aggregate([
+          {
+            $lookup: {
+              from: 'users',
+              localField: "teacherId",
+              foreignField: "_id",
+              as: "teacher",
+            }
+          },
+          {
+            $match: { 
+              $or: [
+                {_id: ObjectID(req.params.userId)},
+                {
+                  teacherId: ObjectID(req.params.userId),
+                  'socketIds.0': {$exists: true},
+                },
+              ]
+            }
+          }
+        ])
+        .project({teacher: {_id: 0, email: 0, type: 0, userfolder: 0, password: 0, socketIds: 0}})
         .toArray()
         .then(results => {
           const user = results.find((user) => user._id == req.params.userId)
