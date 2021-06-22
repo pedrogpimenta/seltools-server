@@ -485,6 +485,43 @@ MongoClient.connect(
         })
     })
 
+        // GET: LEGACY one document
+        // TODO: Update this call, this is only for "parent" when making one file
+        app.get('/document/:id', (req, res) => {
+          const filesFrom = parseInt(req.params.filesFrom)
+    
+          db.collection('documents')
+            .aggregate([
+              {
+                $graphLookup: {
+                  from: 'documents',
+                  startWith: "$parent",
+                  connectFromField: "parent",
+                  connectToField: "_id",
+                  as: "breadcrumbs",
+                  depthField: "depth",
+                }
+              },
+              {
+                $match: { 
+                  _id: ObjectID(req.params.id),
+                }
+              }
+            ])
+            .toArray()
+            .then(results => {
+              const document = results[0]
+              const documentFilesLength = document.filesLength
+              const breadcrumbs = document.breadcrumbs.sort((a, b) => b.depth - a.depth)
+    
+              return res.send({
+                document: document,
+                breadcrumbs: breadcrumbs,
+                documentFilesLength: documentFilesLength,
+              })
+            })
+        })
+
     // GET: one document
     app.get('/document/:id/:filesFrom', (req, res) => {
       const filesFrom = parseInt(req.params.filesFrom)
@@ -517,7 +554,7 @@ MongoClient.connect(
               shared: 1,
               breadcrumbs: 1,
               files: {
-                $slice: ["$files", filesFrom, 2],
+                $slice: ["$files", filesFrom, 20],
               },
               filesLength: {"$size": "$files"},
             }
