@@ -420,30 +420,24 @@ MongoClient.connect(
           if (req.query.shouldUpdateDate === 'true') document.modifiedDate = new Date()
 
           if (!!req.body.files) {
-            if (req.body.files.length < document.files.length) {
-              document.files.splice(req.body.files.length, document.files.length - req.body.files.length)
+            console.log(' req.body.filesToDelete:', req.body.filesToDelete)
+
+            for (let i in req.body.filesToDelete) {
+              const fileToDeleteIndex = document.files.findIndex((documentFile) => documentFile.id === req.body.filesToDelete[i])
+              if (fileToDeleteIndex >= 0) {
+                document.files.splice(fileToDeleteIndex, 1)
+              }
             }
 
-            for (let file in req.body.files) {
-              if (document.files.length <= file) document.files.push({})
-  
-              // TODO: improve this. I do this because if document.content === '', it will keep the content of the previous file
-              // This happens with other things (previously with name, but I now send null and it works)
-              // All of this should be improved though
-              document.files[file].content = ''
-  
-              document.files[file].id = req.body.files[file].id || document.files[file].id
-              document.files[file].type = req.body.files[file].type || document.files[file].type
-              document.files[file].name = req.body.files[file].name || document.files[file].name
-              document.files[file].url = req.body.files[file].url || document.files[file].url
-              document.files[file].markers = req.body.files[file].markers || document.files[file].markers
-              document.files[file].content = req.body.files[file].content || document.files[file].content
-              document.files[file].highlights = req.body.files[file].highlights || document.files[file].highlights
-              document.files[file].textInputs = req.body.files[file].textInputs || document.files[file].textInputs
-              document.files[file].lines = req.body.files[file].lines || document.files[file].lines
-              document.files[file].creator = req.body.files[file].creator || document.files[file].creator
-              document.files[file].stamps = req.body.files[file].stamps || document.files[file].stamps
-              document.files[file].hidden = typeof req.body.files[file].hidden === 'undefined' ? false : req.body.files[file].hidden === true ? true : req.body.files[file].hidden === false ? false : document.files[file].hidden
+            for (let i in req.body.files) {
+              const alreadyFileIndex = document.files.findIndex((documentFile) => documentFile.id === req.body.files[i].id)
+              const alreadyFile = document.files[alreadyFileIndex]
+
+              if (!!alreadyFile) {
+                document.files[alreadyFileIndex] = req.body.files[i]
+              } else {
+                document.files.splice(i, 0, req.body.files[i])
+              }
             }
           }
 
@@ -452,14 +446,11 @@ MongoClient.connect(
               { $set: {
                 name: document.name,
                 color: document.color,
-                // teacher: document.teacher,
                 parent: document.parent,
                 files: document.files,
                 shared: document.shared,
                 modifiedDate: document.modifiedDate,
                 hidden: document.hidden,
-                // modifiedBy: document.modifiedBy,
-                // sharedWith: document.sharedWith || [],
               } },
             )
             .then(result => {
@@ -494,11 +485,48 @@ MongoClient.connect(
         })
     })
 
+        // GET: LEGACY one document
+        // TODO: Update this call, this is only for "parent" when making one file
+        app.get('/document/:id', (req, res) => {
+          const filesFrom = parseInt(req.params.filesFrom)
+    
+          db.collection('documents')
+            .aggregate([
+              {
+                $graphLookup: {
+                  from: 'documents',
+                  startWith: "$parent",
+                  connectFromField: "parent",
+                  connectToField: "_id",
+                  as: "breadcrumbs",
+                  depthField: "depth",
+                }
+              },
+              {
+                $match: { 
+                  _id: ObjectID(req.params.id),
+                }
+              }
+            ])
+            .toArray()
+            .then(results => {
+              const document = results[0]
+              const documentFilesLength = document.filesLength
+              const breadcrumbs = document.breadcrumbs.sort((a, b) => b.depth - a.depth)
+    
+              return res.send({
+                document: document,
+                breadcrumbs: breadcrumbs,
+                documentFilesLength: documentFilesLength,
+              })
+            })
+        })
+
     // GET: one document
-    app.get('/document/:id', (req, res) => {
-      // TODO: should this be findOne ?
+    app.get('/document/:id/:filesFrom', (req, res) => {
+      const filesFrom = parseInt(req.params.filesFrom)
+
       db.collection('documents')
-        // .findOne({_id: ObjectID(req.params.id)})
         .aggregate([
           {
             $graphLookup: {
@@ -511,6 +539,27 @@ MongoClient.connect(
             }
           },
           {
+            $project: {
+              name: 1,
+              type: 1,
+              parent: 1,
+              teacher: 1,
+              createDate: 1,
+              modifiedDate: 1,
+              modifiedBy: 1,
+              locked: 1,
+              lockedBy: 1,
+              color: 1,
+              hidden: 1,
+              shared: 1,
+              breadcrumbs: 1,
+              files: {
+                $slice: ["$files", filesFrom, 20],
+              },
+              filesLength: {"$size": "$files"},
+            }
+          },
+          {
             $match: { 
               _id: ObjectID(req.params.id),
             }
@@ -519,9 +568,14 @@ MongoClient.connect(
         .toArray()
         .then(results => {
           const document = results[0]
+          const documentFilesLength = document.filesLength
           const breadcrumbs = document.breadcrumbs.sort((a, b) => b.depth - a.depth)
 
-          return res.send({document: document, breadcrumbs: breadcrumbs})
+          return res.send({
+            document: document,
+            breadcrumbs: breadcrumbs,
+            documentFilesLength: documentFilesLength,
+          })
         })
     })
 
