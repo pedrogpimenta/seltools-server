@@ -1,51 +1,53 @@
 #!/usr/bin/env node
 
-require('dotenv').config()
+require("dotenv").config();
 
-const passport = require('passport')
+const passport = require("passport");
 // const LocalStrategy = require('passport-local').Strategy
-const jwt = require('jsonwebtoken')
-const passportJWT = require('passport-jwt')
-const ExtractJwt = passportJWT.ExtractJwt
-const JwtStrategy = passportJWT.Strategy
+const jwt = require("jsonwebtoken");
+const passportJWT = require("passport-jwt");
+const ExtractJwt = passportJWT.ExtractJwt;
+const JwtStrategy = passportJWT.Strategy;
 
-const bcrypt = require('bcrypt')
-const sendgridmail = require('@sendgrid/mail')
-const cloneDeep = require('lodash/cloneDeep')
-const { MongoClient, ObjectID } = require('mongodb')
+const bcrypt = require("bcrypt");
+const sendgridmail = require("@sendgrid/mail");
+const cloneDeep = require("lodash/cloneDeep");
+const { MongoClient, ObjectID } = require("mongodb");
 
-const aws = require('aws-sdk')
+const aws = require("aws-sdk");
 aws.config.update({
-  region: 'eu-west-1', // Put your aws region here
+  region: "eu-west-1", // Put your aws region here
   accessKeyId: process.env.ACCESS_KEY_ID,
   secretAccessKey: process.env.SECRET_ACCESS_KEY,
-})
+});
 
-const S3_BUCKET = 'seltools'
-sendgridmail.setApiKey(process.env.SENDGRID_API_KEY)
+const S3_BUCKET = "seltools";
+sendgridmail.setApiKey(process.env.SENDGRID_API_KEY);
 
 /**
  * Module dependencies.
  */
 
-const bodyParser= require('body-parser');
-const cors = require('cors');
+const bodyParser = require("body-parser");
+const cors = require("cors");
 
-var app = require('../app');
-var debug = require('debug')('seltools-server:server');
-var http = require('http');
+var app = require("../app");
+var debug = require("debug")("seltools-server:server");
+var http = require("http");
 
 /**
  * Get port from environment and store in Express.
  */
 
 var port = normalizePort(process.env.PORT);
-app.set('port', port);
-app.use(cors({
-  credentials: true,
-  origin: true
-}));
-app.options('*', cors());
+app.set("port", port);
+app.use(
+  cors({
+    credentials: true,
+    origin: true,
+  })
+);
+app.options("*", cors());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json({ limit: "50mb" }));
 
@@ -60,8 +62,8 @@ var server = http.createServer(app);
  */
 
 server.listen(port);
-server.on('error', onError);
-server.on('listening', onListening);
+server.on("error", onError);
+server.on("listening", onListening);
 
 /**
  * Normalize a port into a number, string, or false.
@@ -88,22 +90,20 @@ function normalizePort(val) {
  */
 
 function onError(error) {
-  if (error.syscall !== 'listen') {
+  if (error.syscall !== "listen") {
     throw error;
   }
 
-  var bind = typeof port === 'string'
-    ? 'Pipe ' + port
-    : 'Port ' + port;
+  var bind = typeof port === "string" ? "Pipe " + port : "Port " + port;
 
   // handle specific listen errors with friendly messages
   switch (error.code) {
-    case 'EACCES':
-      console.error(bind + ' requires elevated privileges');
+    case "EACCES":
+      console.error(bind + " requires elevated privileges");
       process.exit(1);
       break;
-    case 'EADDRINUSE':
-      console.error(bind + ' is already in use');
+    case "EADDRINUSE":
+      console.error(bind + " is already in use");
       process.exit(1);
       break;
     default:
@@ -117,219 +117,235 @@ function onError(error) {
 
 function onListening() {
   var addr = server.address();
-  var bind = typeof addr === 'string'
-    ? 'pipe ' + addr
-    : 'port ' + addr.port;
-  debug('Listening on ' + bind);
+  var bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
+  debug("Listening on " + bind);
 }
 
-const io = require('socket.io')(server, {
+const io = require("socket.io")(server, {
   cors: {
     origin: process.env.WS_ORIGIN_URI,
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
 // Helper: guid generator
 const guidGenerator = () => {
-  var S4 = function() {
-    return (((1+Math.random())*0x10000)|0).toString(16).substring(1)
-  }
+  var S4 = function () {
+    return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
+  };
 
-  return (S4()+S4()+"-"+S4()+"-"+S4()+"-"+S4()+"-"+S4()+S4()+S4())
-}
-
-
-
-
-
-
-
-
-
-
-
-
+  return (
+    S4() +
+    S4() +
+    "-" +
+    S4() +
+    "-" +
+    S4() +
+    "-" +
+    S4() +
+    "-" +
+    S4() +
+    S4() +
+    S4()
+  );
+};
 
 /**
  * Connect to DB, then API and WebSockets
  */
 
-MongoClient.connect(
-  process.env.MONGODB_URI, {
-    useUnifiedTopology: true
-  }
-)
-  .then(client => {
-    console.log('Connected to db')
-    const db = client.db('seltools')
+MongoClient.connect(process.env.MONGODB_URI, {
+  useUnifiedTopology: true,
+})
+  .then((client) => {
+    console.log("Connected to db");
+    const db = client.db("seltools");
 
     // Reset connected users
-    
-    db.collection('users')
-      .updateMany(
-        {},
-        { $set: {
+
+    db.collection("users").updateMany(
+      {},
+      {
+        $set: {
           socketIds: [],
-        } }
-      )
+        },
+      }
+    );
 
     // ----------------- //
     // ----- AUTH ------ //
 
-    const jwtOptions = {}
+    const jwtOptions = {};
     jwtOptions.jwtFromRequest = ExtractJwt.fromAuthHeaderAsBearerToken();
-    jwtOptions.secretOrKey = 'iWantToLiveInACyberpunkWorld';
+    jwtOptions.secretOrKey = "iWantToLiveInACyberpunkWorld";
 
-    const strategy = new JwtStrategy(jwtOptions, function(jwt_payload, next) {
-      db.collection('users').findOne({jwtId: jwt_payload.id})
-        .then(results => {
+    const strategy = new JwtStrategy(jwtOptions, function (jwt_payload, next) {
+      db.collection("users")
+        .findOne({ jwtId: jwt_payload.id })
+        .then((results) => {
           next(null, results);
-        })
+        });
     });
 
     passport.use(strategy);
 
-    app.post('/login', (req, res) => {
-      db.collection('users').findOne({email: req.body.email})
-        .then(results => {
+    app.post("/login", (req, res) => {
+      db.collection("users")
+        .findOne({ email: req.body.email })
+        .then((results) => {
           if (!!results) {
-            if(bcrypt.compareSync(req.body.password, results.password)) {
-              var payload = {_id: results._id};
+            if (bcrypt.compareSync(req.body.password, results.password)) {
+              var payload = { _id: results._id };
               var token = jwt.sign(payload, jwtOptions.secretOrKey);
-              res.json({message: "ok", token: token, user: results});
+              res.json({ message: "ok", token: token, user: results });
             } else {
-              res.status(401).json({message:"Contraseña incorrecta."});
+              res.status(401).json({ message: "Contraseña incorrecta." });
             }
           } else {
-            res.status(401).json({message:"Usuario no encontrado. Verifica que tu email es correcto."});
+            res.status(401).json({
+              message:
+                "Usuario no encontrado. Verifica que tu email es correcto.",
+            });
           }
-        })
-    })
-    
-    app.post('/register', (req, res) => {
-      db.collection('users').findOne({email: req.body.email})
-        .then(userResults => {
-          if(!userResults) {
-            db.collection('documents')
+        });
+    });
+
+    app.post("/register", (req, res) => {
+      db.collection("users")
+        .findOne({ email: req.body.email })
+        .then((userResults) => {
+          if (!userResults) {
+            db.collection("documents")
               .insertOne({
                 name: req.body.name,
                 type: req.body.type,
-                parent: req.body.teacher ? ObjectID(req.body.teacherFolder) : '',
+                parent: req.body.teacher
+                  ? ObjectID(req.body.teacherFolder)
+                  : "",
               })
-              .then(results => {
-                db.collection('users').insertOne({
+              .then((results) => {
+                db.collection("users")
+                  .insertOne({
                     email: req.body.email,
                     password: bcrypt.hashSync(req.body.password, 10),
                     username: req.body.name,
                     type: req.body.type,
                     userfolder: ObjectID(results.insertedId),
                   })
-                  .then(newUserResults => {
+                  .then((newUserResults) => {
                     res.json({
-                      message: 'ok',
-                      newUserId: newUserResults.insertedId
+                      message: "ok",
+                      newUserId: newUserResults.insertedId,
                     });
-                    
+
                     sendEmail({
                       emailTo: req.body.email,
-                      templateId: 'd-7ec80a58953347ffb97693624419570b',
+                      templateId: "d-7ec80a58953347ffb97693624419570b",
                       data: {
-                        seltools_color: '#F87361',
+                        seltools_color: "#F87361",
                         user_email: req.body.email,
                       },
-                    })
-                  })
-              })
-          } else if (userResults && userResults.type !== 'teacher' && !userResults.userHasRegistered) {
-            db.collection('users').updateOne(
-              { email: req.body.email},
-              { $set: {
-                username: req.body.name,
-                email: req.body.email,
-                password: bcrypt.hashSync(req.body.password, 10),
-                userHasRegistered: true,
-              }})
-              .then(newUserResults => {
+                    });
+                  });
+              });
+          } else if (
+            userResults &&
+            userResults.type !== "teacher" &&
+            !userResults.userHasRegistered
+          ) {
+            db.collection("users")
+              .updateOne(
+                { email: req.body.email },
+                {
+                  $set: {
+                    username: req.body.name,
+                    email: req.body.email,
+                    password: bcrypt.hashSync(req.body.password, 10),
+                    userHasRegistered: true,
+                  },
+                }
+              )
+              .then((newUserResults) => {
                 res.json({
-                  message: 'ok',
+                  message: "ok",
                   newUserResults: newUserResults,
-                })
+                });
 
                 sendEmail({
                   emailTo: req.body.email,
-                  subject: '¡Ya puedes acceder a tus documentos!',
-                  templateId: 'd-9b4951a462e247f5ad4586c77edec147',
+                  subject: "¡Ya puedes acceder a tus documentos!",
+                  templateId: "d-9b4951a462e247f5ad4586c77edec147",
                   data: {
-                    seltools_color: '#F87361',
+                    seltools_color: "#F87361",
                     user_name: req.body.name,
                   },
-                })
-              })
+                });
+              });
           } else {
             res.json({
-              message: 'error',
-              details: 'Este email ya fue utilizado',
-            })
+              message: "error",
+              details: "Este email ya fue utilizado",
+            });
           }
-        })
-    })
+        });
+    });
 
-    app.post('/recover', (req, res) => {
-      const tempRecovery = guidGenerator()
+    app.post("/recover", (req, res) => {
+      const tempRecovery = guidGenerator();
 
-      db.collection('users')
+      db.collection("users")
         .findOneAndUpdate(
           { email: req.body.email },
-          { $set: {
-            tempRecovery: tempRecovery,
-          } }
+          {
+            $set: {
+              tempRecovery: tempRecovery,
+            },
+          }
         )
-        .then(results => {
-          if(!!results) {
-            res.json({message: "ok"});
+        .then((results) => {
+          if (!!results) {
+            res.json({ message: "ok" });
 
             sendEmail({
               emailTo: req.body.email,
-              subject: 'Recuperar cuenta',
-              templateId: 'd-605e13ccd74141c5aa486a8b54c7e53d',
+              subject: "Recuperar cuenta",
+              templateId: "d-605e13ccd74141c5aa486a8b54c7e53d",
               data: {
-                seltools_color: '#F87361',
+                seltools_color: "#F87361",
                 temp_recovery: tempRecovery,
-              }
-            })
+              },
+            });
           }
-        })
-    })
+        });
+    });
 
-    app.get('/resetexists/:recoveryId', (req, res) => {
-
-      db.collection('users')
+    app.get("/resetexists/:recoveryId", (req, res) => {
+      db.collection("users")
         .findOne({ tempRecovery: req.params.recoveryId })
-        .then(results => {
+        .then((results) => {
           if (results) {
-            res.json({message: "ok"});
+            res.json({ message: "ok" });
           } else {
-            res.json({message: "no"});
+            res.json({ message: "no" });
           }
-        })
-    })
-    
-    app.post('/resetpass/:recoveryId', (req, res) => {
-      db.collection('users')
+        });
+    });
+
+    app.post("/resetpass/:recoveryId", (req, res) => {
+      db.collection("users")
         .findOneAndUpdate(
           { tempRecovery: req.params.recoveryId },
           {
             $unset: {
-              tempRecovery: '',
+              tempRecovery: "",
             },
             $set: {
               password: bcrypt.hashSync(req.body.password, 10),
             },
           }
         )
-        .then(results => {
-          res.json({message: "ok"});
+        .then((results) => {
+          res.json({ message: "ok" });
 
           // sendEmail({
           //   emailTo: req.body.email,
@@ -339,204 +355,247 @@ MongoClient.connect(
           //     seltools_color: '#F87361',
           //   }
           // })
-        })
-    })
-
-
-
-
+        });
+    });
 
     // ----------------- //
     // ------ API ------ //
 
-    app.get('/', (req, res) => {
-      return res.send('You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>')
-    })
+    app.get("/", (req, res) => {
+      return res.send(
+        'You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>'
+      );
+    });
 
     // ------ Document API ------ //
 
     // POST new document
-    app.post('/document', (req, res) => {
-      console.log('POST')
-      const document = cloneDeep(req.body)
+    app.post("/document", (req, res) => {
+      console.log("POST");
+      const document = cloneDeep(req.body);
 
-      db.collection('documents').findOne({_id: ObjectID(req.query.parent)})
-        .then(results => {
-          const parent = results
+      db.collection("documents")
+        .findOne({ _id: ObjectID(req.query.parent) })
+        .then((results) => {
+          const parent = results;
 
-          document.teacher = ObjectID(req.body.teacher) || document.teacher
-          document.parent = ObjectID(document.parent)
-          document.createDate = new Date()
-          document.modifiedDate = new Date()
-          document.modifiedBy = new Date()
-    
-          db.collection('documents').insertOne(document)
-            .then(result => {
-              console.log('document saved')
-              return res.send(JSON.stringify({id: result.insertedId}))
+          document.teacher = ObjectID(req.body.teacher) || document.teacher;
+          document.parent = ObjectID(document.parent);
+          document.createDate = new Date();
+          document.modifiedDate = new Date();
+          document.modifiedBy = new Date();
+
+          db.collection("documents")
+            .insertOne(document)
+            .then((result) => {
+              console.log("document saved");
+              return res.send(JSON.stringify({ id: result.insertedId }));
             })
-            .catch(error => console.error(error))
-        })
-    })
+            .catch((error) => console.error(error));
+        });
+    });
 
     // POST clone document
-    app.post('/documentclone/:documentId', passport.authenticate('jwt', { session: false }), (req, res) => {
-      console.log('CLONE')
+    app.post(
+      "/documentclone/:documentId",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        console.log("CLONE");
 
-      db.collection('documents').findOne({_id: ObjectID(req.params.documentId)})
-        .then(results => {
-          const document = results
+        db.collection("documents")
+          .findOne({ _id: ObjectID(req.params.documentId) })
+          .then((results) => {
+            const document = results;
 
-          delete document._id
-          document.name = document.name + ' (COPIA)'
-          document.createDate = new Date()
-          document.modifiedDate = new Date()
-          document.shared = false
-    
-          db.collection('documents').insertOne(document)
-            .then(result => {
-              console.log('document saved')
-              return res.send(JSON.stringify({id: result.insertedId}))
-            })
-            .catch(error => console.error(error))
-        })
+            delete document._id;
+            document.name = document.name + " (COPIA)";
+            document.createDate = new Date();
+            document.modifiedDate = new Date();
+            document.shared = false;
 
-    })
+            db.collection("documents")
+              .insertOne(document)
+              .then((result) => {
+                console.log("document saved");
+                return res.send(JSON.stringify({ id: result.insertedId }));
+              })
+              .catch((error) => console.error(error));
+          });
+      }
+    );
 
     // PUT document
-    app.put('/document/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
-      console.log('PUT')
+    app.put(
+      "/document/:id",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        console.log("PUT");
 
-      db.collection('documents')
-        .find({_id: ObjectID(req.params.id)})
-        .toArray()
-        .then(results => {
-          const document = cloneDeep(results[0])
+        db.collection("documents")
+          .find({ _id: ObjectID(req.params.id) })
+          .toArray()
+          .then((results) => {
+            const document = cloneDeep(results[0]);
 
-          document.name = req.body.name || document.name
-          document.color = req.body.color || document.color
-          document.shared = typeof req.body.shared === 'undefined' ? document.shared : req.body.shared
-          if (!!req.body.parent) document.parent = ObjectID(req.body.parent) || document.parent
-          if (req.query.shouldUpdateDate === 'true') document.modifiedDate = new Date()
+            document.name = req.body.name || document.name;
+            document.color = req.body.color || document.color;
+            document.shared =
+              typeof req.body.shared === "undefined"
+                ? document.shared
+                : req.body.shared;
+            if (!!req.body.parent)
+              document.parent = ObjectID(req.body.parent) || document.parent;
+            if (req.query.shouldUpdateDate === "true")
+              document.modifiedDate = new Date();
 
-          if (!!req.body.files) {
-            console.log(' req.body.filesToDelete:', req.body.filesToDelete)
+            if (!!req.body.files) {
+              for (let i in req.body.filesToDelete) {
+                const fileToDeleteIndex = document.files.findIndex(
+                  (documentFile) =>
+                    documentFile.id === req.body.filesToDelete[i]
+                );
+                if (fileToDeleteIndex >= 0) {
+                  document.files.splice(fileToDeleteIndex, 1);
+                }
+              }
 
-            for (let i in req.body.filesToDelete) {
-              const fileToDeleteIndex = document.files.findIndex((documentFile) => documentFile.id === req.body.filesToDelete[i])
-              if (fileToDeleteIndex >= 0) {
-                document.files.splice(fileToDeleteIndex, 1)
+              for (let i in req.body.files) {
+                const alreadyFileIndex = document.files.findIndex(
+                  (documentFile) => documentFile.id === req.body.files[i].id
+                );
+                const alreadyFile = document.files[alreadyFileIndex];
+
+                if (!!alreadyFile) {
+                  document.files[alreadyFileIndex] = req.body.files[i];
+                } else {
+                  document.files.splice(i, 0, req.body.files[i]);
+                }
+              }
+
+              // Reorder
+              for (let i in req.body.files) {
+                const alreadyFileIndex = document.files.findIndex(
+                  (documentFile) => documentFile.id === req.body.files[i].id
+                );
+
+                if (parseInt(alreadyFileIndex) !== parseInt(i)) {
+                  const fileToMove = document.files.splice(alreadyFileIndex, 1);
+                  document.files.splice(i, 0, fileToMove[0]);
+                }
               }
             }
 
-            for (let i in req.body.files) {
-              const alreadyFileIndex = document.files.findIndex((documentFile) => documentFile.id === req.body.files[i].id)
-              const alreadyFile = document.files[alreadyFileIndex]
-
-              if (!!alreadyFile) {
-                document.files[alreadyFileIndex] = req.body.files[i]
-              } else {
-                document.files.splice(i, 0, req.body.files[i])
-              }
-            }
-          }
-
-          db.collection('documents').updateOne(
-              { _id: ObjectID(req.params.id) },
-              { $set: {
-                name: document.name,
-                color: document.color,
-                parent: document.parent,
-                files: document.files,
-                shared: document.shared,
-                modifiedDate: document.modifiedDate,
-                hidden: document.hidden,
-              } },
-            )
-            .then(result => {
-              return res.send(result)
-            })
-            .catch(error => console.error(error))
-        })
-    })
-    
-    // MOVE document
-    app.put('/documentmove/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
-      console.log('MOVE')
-
-      db.collection('documents').find({_id: ObjectID(req.params.id)}).toArray()
-        .then(results => {
-          const document = cloneDeep(results[0])
-
-          db.collection('documents').findOne({_id: ObjectID(req.body.parentId)})
-            .then(result => {
-
-              db.collection('documents').updateOne(
-                  { _id: ObjectID(req.params.id) },
-                  { $set: {
-                    parent: ObjectID(req.body.parentId),
-                  } },
-                )
-                .then(result => {
-                  return res.send(result)
-                })
-                .catch(error => console.error(error))
-            })
-        })
-    })
-
-        // GET: LEGACY one document
-        // TODO: Update this call, this is only for "parent" when making one file
-        app.get('/document/:id', (req, res) => {
-          const filesFrom = parseInt(req.params.filesFrom)
-    
-          db.collection('documents')
-            .aggregate([
-              {
-                $graphLookup: {
-                  from: 'documents',
-                  startWith: "$parent",
-                  connectFromField: "parent",
-                  connectToField: "_id",
-                  as: "breadcrumbs",
-                  depthField: "depth",
+            db.collection("documents")
+              .updateOne(
+                { _id: ObjectID(req.params.id) },
+                {
+                  $set: {
+                    name: document.name,
+                    color: document.color,
+                    parent: document.parent,
+                    files: document.files,
+                    shared: document.shared,
+                    modifiedDate: document.modifiedDate,
+                    hidden: document.hidden,
+                  },
                 }
-              },
-              {
-                $match: { 
-                  _id: ObjectID(req.params.id),
-                }
-              }
-            ])
-            .toArray()
-            .then(results => {
-              const document = results[0]
-              const documentFilesLength = document.filesLength
-              const breadcrumbs = document.breadcrumbs.sort((a, b) => b.depth - a.depth)
-    
-              return res.send({
-                document: document,
-                breadcrumbs: breadcrumbs,
-                documentFilesLength: documentFilesLength,
+              )
+              .then((result) => {
+                return res.send(result);
               })
-            })
-        })
+              .catch((error) => console.error(error));
+          });
+      }
+    );
 
-    // GET: one document
-    app.get('/document/:id/:filesFrom', (req, res) => {
-      const filesFrom = parseInt(req.params.filesFrom)
+    // MOVE document
+    app.put(
+      "/documentmove/:id",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        console.log("MOVE");
 
-      db.collection('documents')
+        db.collection("documents")
+          .find({ _id: ObjectID(req.params.id) })
+          .toArray()
+          .then((results) => {
+            const document = cloneDeep(results[0]);
+
+            db.collection("documents")
+              .findOne({ _id: ObjectID(req.body.parentId) })
+              .then((result) => {
+                db.collection("documents")
+                  .updateOne(
+                    { _id: ObjectID(req.params.id) },
+                    {
+                      $set: {
+                        parent: ObjectID(req.body.parentId),
+                      },
+                    }
+                  )
+                  .then((result) => {
+                    return res.send(result);
+                  })
+                  .catch((error) => console.error(error));
+              });
+          });
+      }
+    );
+
+    // GET: LEGACY one document
+    // TODO: Update this call, this is only for "parent" when making one file
+    app.get("/document/:id", (req, res) => {
+      const filesFrom = parseInt(req.params.filesFrom);
+
+      db.collection("documents")
         .aggregate([
           {
             $graphLookup: {
-              from: 'documents',
+              from: "documents",
               startWith: "$parent",
               connectFromField: "parent",
               connectToField: "_id",
               as: "breadcrumbs",
               depthField: "depth",
-            }
+            },
+          },
+          {
+            $match: {
+              _id: ObjectID(req.params.id),
+            },
+          },
+        ])
+        .toArray()
+        .then((results) => {
+          const document = results[0];
+          const documentFilesLength = document.filesLength;
+          const breadcrumbs = document.breadcrumbs.sort(
+            (a, b) => b.depth - a.depth
+          );
+
+          return res.send({
+            document: document,
+            breadcrumbs: breadcrumbs,
+            documentFilesLength: documentFilesLength,
+          });
+        });
+    });
+
+    // GET: one document
+    app.get("/document/:id/:filesFrom", (req, res) => {
+      const filesFrom = parseInt(req.params.filesFrom);
+
+      db.collection("documents")
+        .aggregate([
+          {
+            $graphLookup: {
+              from: "documents",
+              startWith: "$parent",
+              connectFromField: "parent",
+              connectToField: "_id",
+              as: "breadcrumbs",
+              depthField: "depth",
+            },
           },
           {
             $project: {
@@ -556,198 +615,266 @@ MongoClient.connect(
               files: {
                 $slice: ["$files", filesFrom, 20],
               },
-              filesLength: {"$size": "$files"},
-            }
+              filesLength: { $size: "$files" },
+            },
           },
           {
-            $match: { 
+            $match: {
               _id: ObjectID(req.params.id),
-            }
-          }
+            },
+          },
         ])
         .toArray()
-        .then(results => {
-          const document = results[0]
-          const documentFilesLength = document.filesLength
-          const breadcrumbs = document.breadcrumbs.sort((a, b) => b.depth - a.depth)
+        .then((results) => {
+          const document = results[0];
+          const documentFilesLength = document.filesLength;
+          const breadcrumbs = document.breadcrumbs.sort(
+            (a, b) => b.depth - a.depth
+          );
 
           return res.send({
             document: document,
             breadcrumbs: breadcrumbs,
             documentFilesLength: documentFilesLength,
-          })
-        })
-    })
+          });
+        });
+    });
 
     // DELETE one document
-    app.delete('/document/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('documents').deleteOne({_id: ObjectID(req.params.id)})
-        .then(results => {
-          return res.send(results)
-        })
-    })
+    app.delete(
+      "/document/:id",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        db.collection("documents")
+          .deleteOne({ _id: ObjectID(req.params.id) })
+          .then((results) => {
+            return res.send(results);
+          });
+      }
+    );
 
     // GET: documents
-    app.get('/user/:userId/documents/:folderId', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('documents')
-        .aggregate([
-          {
-            $graphLookup: {
-              from: 'documents',
-              startWith: "$parent",
-              connectFromField: "parent",
-              connectToField: "_id",
-              as: "breadcrumbs",
-              depthField: "depth",
+    app.get(
+      "/user/:userId/documents/:folderId",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        db.collection("documents")
+          .aggregate([
+            {
+              $graphLookup: {
+                from: "documents",
+                startWith: "$parent",
+                connectFromField: "parent",
+                connectToField: "_id",
+                as: "breadcrumbs",
+                depthField: "depth",
+              },
+            },
+            {
+              $match: {
+                $or: [
+                  { _id: ObjectID(req.params.folderId) },
+                  { parent: ObjectID(req.params.folderId) },
+                ],
+              },
+            },
+          ])
+          .project({
+            files: 0,
+            modifiedDate: 0,
+            sharedWith: 0,
+            locked: 0,
+            lockedBy: 0,
+          })
+          .sort({ name: 1 })
+          .toArray()
+          .then((results) => {
+            const folder = results.find(
+              (doc) => doc._id == req.params.folderId
+            );
+            let documents = results.filter(
+              (doc) => doc.parent == req.params.folderId
+            );
+            const students =
+              req.query.isTeacherFolder === "true"
+                ? results.filter((doc) => doc.type === "student")
+                : [];
+            const breadcrumbs = folder.breadcrumbs.sort(
+              (a, b) => b.depth - a.depth
+            );
+
+            if (req.query.userIsStudent === "true") {
+              documents = documents.filter((doc) => doc.shared === true);
             }
-          },
-          {
-            $match: { 
-              $or: [
-                {_id: ObjectID(req.params.folderId)},
-                {parent: ObjectID(req.params.folderId)},
-              ]
+
+            if (documents.length) {
+              documents = documents.sort(
+                (a, b) => new Date(b.createDate) - new Date(a.createDate)
+              );
             }
-          }
-        ])
-        .project({files: 0, modifiedDate: 0, sharedWith: 0, locked: 0, lockedBy: 0})
-        .sort({name: 1})
-        .toArray()
-        .then(results => {
-          const folder = results.find((doc) => doc._id == req.params.folderId)
-          let documents = results.filter((doc) => doc.parent == req.params.folderId)
-          const students = req.query.isTeacherFolder === 'true' ? results.filter((doc) => doc.type === 'student') : []
-          const breadcrumbs = folder.breadcrumbs.sort((a, b) => b.depth - a.depth)
 
-          if (req.query.userIsStudent === 'true') {
-            documents = documents.filter((doc) => doc.shared === true)
-          }
+            return res.send({
+              folder: folder,
+              breadcrumbs: breadcrumbs,
+              documents: documents,
+              students: students,
+            });
+          });
+      }
+    );
 
-          if (documents.length) {
-            documents = documents.sort((a, b) => new Date(b.createDate) - new Date(a.createDate))
-          }
-
-          return res.send({folder: folder, breadcrumbs: breadcrumbs, documents: documents, students: students})
-        })
-    })
-        
     // ------ Student API ------ //
 
     // POST: one student folder & user
-    app.post('/newStudent', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('documents')
-        .insertOne({
-          name: req.body.name,
-          type: 'student',
-          parent: ObjectID(req.body.teacherFolder),
-          createDate: new Date(),
-        })
-        .then(results => {
-          db.collection('users').insertOne({
-            username: req.body.name,
-            email: req.body.email,
-            type: 'student',
-            userfolder: results.insertedId,
-            userHasRegistered: false,
-            teacherId: ObjectID(req.body.teacherId),
+    app.post(
+      "/newStudent",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        db.collection("documents")
+          .insertOne({
+            name: req.body.name,
+            type: "student",
+            parent: ObjectID(req.body.teacherFolder),
+            createDate: new Date(),
           })
-          .then(() => {
-            res.send('ok')
-          })
-        .catch(error => console.error(error))
-      })
-    })
+          .then((results) => {
+            db.collection("users")
+              .insertOne({
+                username: req.body.name,
+                email: req.body.email,
+                type: "student",
+                userfolder: results.insertedId,
+                userHasRegistered: false,
+                teacherId: ObjectID(req.body.teacherId),
+              })
+              .then(() => {
+                res.send("ok");
+              })
+              .catch((error) => console.error(error));
+          });
+      }
+    );
 
     // GET: one student user
-    app.get('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('users').findOne({userfolder: ObjectID(req.params.id)})
-        .then(results => {
-          return res.send(results)
-        })
-    })
+    app.get(
+      "/student/:id",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        db.collection("users")
+          .findOne({ userfolder: ObjectID(req.params.id) })
+          .then((results) => {
+            return res.send(results);
+          });
+      }
+    );
 
     // PUT: one student folder & user
-    app.put('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
-      console.log('PUT student')
+    app.put(
+      "/student/:id",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        console.log("PUT student");
 
-      db.collection('users').updateOne(
-          { _id: ObjectID(req.params.id) },
-          { $set: {
-            username: req.body.username,
-            email: req.body.email,
-          } },
-        )
-        .then((userResult) => {
-
-          db.collection('documents').updateOne(
-            { _id: ObjectID(req.body.userfolder) },
-            { $set: {
-              name: req.body.username,
-            } },
+        db.collection("users")
+          .updateOne(
+            { _id: ObjectID(req.params.id) },
+            {
+              $set: {
+                username: req.body.username,
+                email: req.body.email,
+              },
+            }
           )
-          .then(() => {
-            return res.send(userResult)
+          .then((userResult) => {
+            db.collection("documents")
+              .updateOne(
+                { _id: ObjectID(req.body.userfolder) },
+                {
+                  $set: {
+                    name: req.body.username,
+                  },
+                }
+              )
+              .then(() => {
+                return res.send(userResult);
+              })
+              .catch((error) => console.error(error));
+
+            // return res.send(userResult)
           })
-          .catch(error => console.error(error))
+          .catch((error) => console.error(error));
+      }
+    );
 
-          // return res.send(userResult)
-        })
-        .catch(error => console.error(error))
-    })
-    
     // DELETE: one student folder & user
-    app.delete('/student/:id', passport.authenticate('jwt', { session: false }), (req, res) => {
-      console.log('DELETE student')
+    app.delete(
+      "/student/:id",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        console.log("DELETE student");
 
-      db.collection('users')
-        .deleteOne({userfolder: ObjectID(req.params.id)})
-        .then(() => {
-          db.collection('documents')
-            .deleteOne({_id: ObjectID(req.params.id)})
-            .then(results => {
-
-              return res.send(results)
-            })
-
-        })
-    })
-
+        db.collection("users")
+          .deleteOne({ userfolder: ObjectID(req.params.id) })
+          .then(() => {
+            db.collection("documents")
+              .deleteOne({ _id: ObjectID(req.params.id) })
+              .then((results) => {
+                return res.send(results);
+              });
+          });
+      }
+    );
 
     // ------ User API ------ //
-    
-    // GET: one user
-    app.get('/user/:userId', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('users')
-        .aggregate([
-          {
-            $lookup: {
-              from: 'users',
-              localField: "teacherId",
-              foreignField: "_id",
-              as: "teacher",
-            }
-          },
-          {
-            $match: { 
-              $or: [
-                {_id: ObjectID(req.params.userId)},
-                {
-                  teacherId: ObjectID(req.params.userId),
-                  'socketIds.0': {$exists: true},
-                },
-              ]
-            }
-          }
-        ])
-        .project({teacher: {_id: 0, email: 0, type: 0, userfolder: 0, password: 0, socketIds: 0}})
-        .toArray()
-        .then(results => {
-          const user = results.find((user) => user._id == req.params.userId)
-          const students = results.filter((user) => user.teacherId == req.params.userId)
 
-          return res.send({user: user, students: students})
-        })
-    })
+    // GET: one user
+    app.get(
+      "/user/:userId",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        db.collection("users")
+          .aggregate([
+            {
+              $lookup: {
+                from: "users",
+                localField: "teacherId",
+                foreignField: "_id",
+                as: "teacher",
+              },
+            },
+            {
+              $match: {
+                $or: [
+                  { _id: ObjectID(req.params.userId) },
+                  {
+                    teacherId: ObjectID(req.params.userId),
+                    "socketIds.0": { $exists: true },
+                  },
+                ],
+              },
+            },
+          ])
+          .project({
+            teacher: {
+              _id: 0,
+              email: 0,
+              type: 0,
+              userfolder: 0,
+              password: 0,
+              socketIds: 0,
+            },
+          })
+          .toArray()
+          .then((results) => {
+            const user = results.find((user) => user._id == req.params.userId);
+            const students = results.filter(
+              (user) => user.teacherId == req.params.userId
+            );
+
+            return res.send({ user: user, students: students });
+          });
+      }
+    );
 
     // GET: one user name
     // app.get('/username/:userId', (req, res) => {
@@ -760,256 +887,283 @@ MongoClient.connect(
     // ------ Folders API ------ //
 
     // POST: new folder
-    app.post('/folder', passport.authenticate('jwt', { session: false }), (req, res) => {
-      db.collection('documents').findOne({_id: ObjectID(req.body.parent)})
-        .then(results => {
-          db.collection('documents').insertOne({
-              name: req.body.name,
-              type: req.body.type,
-              parent: ObjectID(req.body.parent),
-              createDate: new Date(),
-            })
-            .then(results => {
-              if (req.body.type === 'folder') {
-                res.send(results)
-              } else {
-                db.collection('users').insertOne({
-                  name: req.body.name,
-                  type: req.body.type,
-                  folderId: results.insertedId,
-                }).then(results => {
-                  db.collection('documents')
-                    .find({parent: ObjectID(req.body.parent), type: 'student' })
-                    .sort({name: 1}).toArray()
-                    .then(results => {
-                      res.send(results)
+    app.post(
+      "/folder",
+      passport.authenticate("jwt", { session: false }),
+      (req, res) => {
+        db.collection("documents")
+          .findOne({ _id: ObjectID(req.body.parent) })
+          .then((results) => {
+            db.collection("documents")
+              .insertOne({
+                name: req.body.name,
+                type: req.body.type,
+                parent: ObjectID(req.body.parent),
+                createDate: new Date(),
+              })
+              .then((results) => {
+                if (req.body.type === "folder") {
+                  res.send(results);
+                } else {
+                  db.collection("users")
+                    .insertOne({
+                      name: req.body.name,
+                      type: req.body.type,
+                      folderId: results.insertedId,
                     })
-                })
-              }
-            })
-            .catch(error => console.error(error))
-        })
-    })
-
+                    .then((results) => {
+                      db.collection("documents")
+                        .find({
+                          parent: ObjectID(req.body.parent),
+                          type: "student",
+                        })
+                        .sort({ name: 1 })
+                        .toArray()
+                        .then((results) => {
+                          res.send(results);
+                        });
+                    });
+                }
+              })
+              .catch((error) => console.error(error));
+          });
+      }
+    );
 
     // ------ AWS API ------ //
 
     // FILE AWS S3 BUCKET
-    app.post('/sign_s3', (req, res) => {
-      const s3 = new aws.S3({signatureVersion: 'v4'})  // Create a new instance of S3
-      const fileName = req.body.fileName
-      const fileType = req.body.fileType
+    app.post("/sign_s3", (req, res) => {
+      const s3 = new aws.S3({ signatureVersion: "v4" }); // Create a new instance of S3
+      const fileName = req.body.fileName;
+      const fileType = req.body.fileType;
 
       const s3Params = {
         Bucket: S3_BUCKET,
         Key: `files/${fileName}`,
         Expires: 500,
         ContentType: fileType,
-        ACL: 'public-read',
-      }
+        ACL: "public-read",
+      };
 
-      s3.getSignedUrl('putObject', s3Params, (err, data) => {
+      s3.getSignedUrl("putObject", s3Params, (err, data) => {
         if (err) {
-          console.log(err)
-          res.json({success: false, error: err})
+          console.log(err);
+          res.json({ success: false, error: err });
         }
 
         const returnData = {
           signedRequest: data,
-          url: `https://${S3_BUCKET}.s3.amazonaws.com/files/${fileName}`
-        }
+          url: `https://${S3_BUCKET}.s3.amazonaws.com/files/${fileName}`,
+        };
 
-        res.json({success:true, data:{returnData}});
-      })
-
-    })
+        res.json({ success: true, data: { returnData } });
+      });
+    });
 
     // ---- END API ---- //
     // ----------------- //
 
-
-
-
-    
     // - BEGIN SOCKETS - //
     // ----------------- //
 
-    io.on('connection', socket => {
+    io.on("connection", (socket) => {
       // Save user as online
-      db.collection('users')
+      db.collection("users")
         .findOneAndUpdate(
           { _id: ObjectID(socket.request._query.userId) },
           {
             $push: {
               socketIds: socket.id,
-            }
-          },
+            },
+          }
         )
-        .then(result => {
-          console.log(`user "${result.value.username}" is online`)
+        .then((result) => {
+          console.log(`user "${result.value.username}" is online`);
 
-          if (result.value.type === 'teacher') return
+          if (result.value.type === "teacher") return;
 
-          db.collection('users')
-            .find(
-              { $or: [
+          db.collection("users")
+            .find({
+              $or: [
                 { _id: ObjectID(result.value.teacherId) },
                 {
                   teacherId: ObjectID(result.value.teacherId),
-                  'socketIds.0': {$exists: true},
+                  "socketIds.0": { $exists: true },
                 },
-              ]}
-            )
-            .toArray()
-            .then(results => {
-              const teacherSocketIds = results.find(user => user.type === 'teacher').socketIds
-              const students = results.filter(user => user.type === 'student')
-              for (let i in teacherSocketIds) {
-                socket.to(teacherSocketIds[i]).emit('connected students', students)
-              }
+              ],
             })
+            .toArray()
+            .then((results) => {
+              const teacherSocketIds = results.find(
+                (user) => user.type === "teacher"
+              ).socketIds;
+              const students = results.filter(
+                (user) => user.type === "student"
+              );
+              for (let i in teacherSocketIds) {
+                socket
+                  .to(teacherSocketIds[i])
+                  .emit("connected students", students);
+              }
+            });
         })
-        .catch(error => console.error(error))
+        .catch((error) => console.error(error));
 
-      socket.on('disconnect', () => {
-        db.collection('users')
+      socket.on("disconnect", () => {
+        db.collection("users")
           .findOneAndUpdate(
             { socketIds: socket.id },
             {
               $pull: {
                 socketIds: socket.id,
-              }
-            },
+              },
+            }
           )
-          .then(result => {
-            console.log(`user "${result.value.username}" is offline`)
+          .then((result) => {
+            console.log(`user "${result.value.username}" is offline`);
 
-            db.collection('documents')
+            db.collection("documents")
               .find({ lockedBy: ObjectID(result.value._id) })
               .toArray()
-              .then(docResults => {
-
-                db.collection('documents')
+              .then((docResults) => {
+                db.collection("documents")
                   .updateMany(
                     {
                       lockedBy: ObjectID(result.value._id),
                     },
-                    { $set: {
-                      locked: false,
-                      lockedBy: '',
-                    } }
+                    {
+                      $set: {
+                        locked: false,
+                        lockedBy: "",
+                      },
+                    }
                   )
-                  .then(updatedDocResults => {
-                    db.collection('users')
+                  .then((updatedDocResults) => {
+                    db.collection("users")
                       .find({
                         teacherId: ObjectID(result.value.teacherId),
-                        'socketIds.0': { $exists: true },
+                        "socketIds.0": { $exists: true },
                       })
                       .toArray()
-                      .then(results => {
+                      .then((results) => {
                         for (let i in docResults) {
-                          socket.broadcast.emit('document reload', docResults[i]._id)
+                          socket.broadcast.emit(
+                            "document reload",
+                            docResults[i]._id
+                          );
                         }
-                        socket.broadcast.emit('connected students', results)
-                      })
-                  })
-              })
+                        socket.broadcast.emit("connected students", results);
+                      });
+                  });
+              });
           })
-          .catch(error => console.error(error))
-      })
+          .catch((error) => console.error(error));
+      });
 
-      socket.on('document unlock', (userId, documentId) => {
-        console.log(`user "${userId}" closed document "${documentId}"`)
+      socket.on("document unlock", (userId, documentId) => {
+        console.log(`user "${userId}" closed document "${documentId}"`);
 
-        db.collection('documents')
+        db.collection("documents")
           .updateMany(
-              {
-                _id: ObjectID(documentId),
-                lockedBy: ObjectID(userId),
-              },
-              { $set: {
+            {
+              _id: ObjectID(documentId),
+              lockedBy: ObjectID(userId),
+            },
+            {
+              $set: {
                 locked: false,
-                lockedBy: '',
-              }
+                lockedBy: "",
+              },
             }
           )
-          .then(docResults => {
-              socket.broadcast.emit('document reload', documentId)
-          })
-      })
+          .then((docResults) => {
+            socket.broadcast.emit("document reload", documentId);
+          });
+      });
 
-      socket.on('document open', (userId, documentId) => {
-        console.log(`user "${userId}" opened document "${documentId}"`)
+      socket.on("document open", (userId, documentId) => {
+        console.log(`user "${userId}" opened document "${documentId}"`);
 
-        db.collection('documents')
-          .find({_id: ObjectID(documentId)})
+        db.collection("documents")
+          .find({ _id: ObjectID(documentId) })
           .toArray()
-          .then(results => {
-            const document = cloneDeep(results[0])
+          .then((results) => {
+            const document = cloneDeep(results[0]);
 
             if (!document.locked) {
-              console.log('document NOT locked, now locking...')
-              db.collection('documents').updateOne(
+              console.log("document NOT locked, now locking...");
+              db.collection("documents")
+                .updateOne(
                   { _id: ObjectID(documentId) },
-                  { $set: {
-                    locked: true,
-                    lockedBy: ObjectID(userId),
-                  } },
+                  {
+                    $set: {
+                      locked: true,
+                      lockedBy: ObjectID(userId),
+                    },
+                  }
                 )
-                .then(result => {
+                .then((result) => {
                   // return res.send(result)
                 })
-                .catch(error => console.error(error))
+                .catch((error) => console.error(error));
             } else {
-              console.log('document already locked by:', document.lockedBy)
+              console.log("document already locked by:", document.lockedBy);
             }
-          })
+          });
+      });
 
-      })
+      socket.on("document saved", (userId, documentId) => {
+        console.log(`user "${userId}" saved document "${documentId}"`);
 
-      socket.on('document saved', (userId, documentId) => {
-        console.log(`user "${userId}" saved document "${documentId}"`)
-
-        db.collection('documents').find({_id: ObjectID(documentId)}).toArray()
-          .then(results => {
-            const document = cloneDeep(results[0])
+        db.collection("documents")
+          .find({ _id: ObjectID(documentId) })
+          .toArray()
+          .then((results) => {
+            const document = cloneDeep(results[0]);
 
             if (!document.locked) {
-              console.log('document NOT locked, now locking...')
-              db.collection('documents').updateOne(
+              console.log("document NOT locked, now locking...");
+              db.collection("documents")
+                .updateOne(
                   { _id: ObjectID(documentId) },
-                  { $set: {
-                    locked: true,
-                    lockedBy: ObjectID(userId),
-                  } },
+                  {
+                    $set: {
+                      locked: true,
+                      lockedBy: ObjectID(userId),
+                    },
+                  }
                 )
-                .then(result => {
-                  socket.broadcast.emit('document reload', documentId)
+                .then((result) => {
+                  socket.broadcast.emit("document reload", documentId);
                 })
-                .catch(error => console.error(error))
+                .catch((error) => console.error(error));
             } else {
-              socket.broadcast.emit('document reload', documentId)
-              console.log('document already locked by:', document.lockedBy)
+              socket.broadcast.emit("document reload", documentId);
+              console.log("document already locked by:", document.lockedBy);
             }
-          })
-      })
+          });
+      });
 
-      socket.on('unlock document', (userId, documentId) => {
-        console.log(`user "${userId}" is unlocking the document ${documentId}`)
+      socket.on("unlock document", (userId, documentId) => {
+        console.log(`user "${userId}" is unlocking the document ${documentId}`);
 
-        db.collection('documents').updateOne(
+        db.collection("documents")
+          .updateOne(
             { _id: ObjectID(documentId) },
-            { $set: {
-              locked: true,
-              lockedBy: ObjectID(userId),
-            } },
+            {
+              $set: {
+                locked: true,
+                lockedBy: ObjectID(userId),
+              },
+            }
           )
-          .then(result => {
-            socket.broadcast.emit('lock document', userId, documentId)
+          .then((result) => {
+            socket.broadcast.emit("lock document", userId, documentId);
           })
-          .catch(error => console.error(error))
-      })
-      
+          .catch((error) => console.error(error));
+      });
+
       // socket.on('document saved after unlock', (userId, documentId) => {
       //   console.log(`user "${userId}" saved document "${documentId}" after unlock`)
       //   socket.broadcast.emit('document reload', documentId)
@@ -1018,9 +1172,8 @@ MongoClient.connect(
 
     // -- END SOCKETS -- //
     // ----------------- //
-
   })
-  .catch(error => console.error(error))
+  .catch((error) => console.error(error));
 
 // --- SEND EMAIL -- //
 // ----------------- //
@@ -1028,18 +1181,18 @@ MongoClient.connect(
 const sendEmail = (content) => {
   const msg = {
     to: content.emailTo,
-    from: 'Seldocs <hola@seldocs.com>',
+    from: "Seldocs <hola@seldocs.com>",
     subject: content.subject,
     template_id: content.templateId,
-    dynamic_template_data: content.data
-  }
+    dynamic_template_data: content.data,
+  };
 
   sendgridmail
     .send(msg)
     .then(() => {
-      console.log('email sent')
+      console.log("email sent");
     })
     .catch((error) => {
-      console.error(error)
-    })
-}
+      console.error(error);
+    });
+};
