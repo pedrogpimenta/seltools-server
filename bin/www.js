@@ -363,7 +363,7 @@ MongoClient.connect(process.env.MONGODB_URI, {
 
     app.get("/", (req, res) => {
       return res.send(
-        'You are probably looking for <a href="https://seltools.pimenta.co">seltools.pimenta.co</a>'
+        'You are probably looking for <a href="https://seldocs.com">seldocs.com</a>'
       );
     });
 
