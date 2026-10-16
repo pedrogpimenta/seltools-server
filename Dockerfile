@@ -22,5 +22,9 @@ EXPOSE 3344
 ENV HOST=0.0.0.0
 ENV PORT=3344
 
-# Start the application with nodemon
-CMD ["yarn", "start"]
+# Plain node, not nodemon: when the app crashes the process exits, so the
+# container exits and docker's restart policy brings it back (and the crash
+# shows up in `docker ps` / RestartCount). nodemon instead keeps PID 1 alive
+# "waiting for file changes", leaving a running container with a dead app.
+# node directly rather than via yarn so SIGTERM reaches the app.
+CMD ["node", "bin/www.js"]

@@ -379,6 +379,17 @@ MongoClient.connect(process.env.MONGODB_URI, {
     // ----------------- //
     // ------ API ------ //
 
+    // Liveness for the docker HEALTHCHECK and external monitors. Registered
+    // inside the connect callback on purpose: before Mongo connects (or if it
+    // never does) this route doesn't exist and the probe gets a 404.
+    app.get("/health", (req, res) => {
+      db.command({ ping: 1 })
+        .then(() => res.json({ ok: true }))
+        .catch((error) =>
+          res.status(503).json({ ok: false, error: error.message })
+        );
+    });
+
     app.get("/", (req, res) => {
       return res.send(
         'You are probably looking for <a href="https://seldocs.com">seldocs.com</a>'
@@ -1191,7 +1202,12 @@ MongoClient.connect(process.env.MONGODB_URI, {
     // -- END SOCKETS -- //
     // ----------------- //
   })
-  .catch((error) => console.error(error));
+  .catch((error) => {
+    // Without the DB nothing works, so exit and let docker restart us instead
+    // of sitting there with the port open and no routes registered.
+    console.error(error);
+    process.exit(1);
+  });
 
 // --- SEND EMAIL -- //
 // ----------------- //
