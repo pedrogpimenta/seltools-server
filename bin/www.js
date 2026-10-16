@@ -190,11 +190,25 @@ MongoClient.connect(process.env.MONGODB_URI, {
     passport.use(strategy);
 
     app.post("/login", (req, res) => {
+      if (!req.body.email || !req.body.password) {
+        return res
+          .status(400)
+          .json({ message: "Introduce tu email y contraseña." });
+      }
+
       db.collection("users")
         .findOne({ email: req.body.email })
         .then((results) => {
           if (!!results) {
-            if (bcrypt.compareSync(req.body.password, results.password)) {
+            // Students created by a teacher have no password until they register
+            if (!results.password) {
+              res.status(401).json({
+                message:
+                  "Este usuario aún no se ha registrado. Completa el registro primero.",
+              });
+            } else if (
+              bcrypt.compareSync(req.body.password, results.password)
+            ) {
               var payload = { _id: results._id };
               var token = jwt.sign(payload, jwtOptions.secretOrKey);
               res.json({ message: "ok", token: token, user: results });
@@ -207,6 +221,10 @@ MongoClient.connect(process.env.MONGODB_URI, {
                 "Usuario no encontrado. Verifica que tu email es correcto.",
             });
           }
+        })
+        .catch((err) => {
+          console.error("Login error:", err);
+          res.status(500).json({ message: "Error al iniciar sesión." });
         });
     });
 
