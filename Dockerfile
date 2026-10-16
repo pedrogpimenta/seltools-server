@@ -22,5 +22,8 @@ EXPOSE 3344
 ENV HOST=0.0.0.0
 ENV PORT=3344
 
-# Start the application with nodemon
+# Plain node, not nodemon: when the app crashes the process (and so the
+# container) exits and compose's restart policy brings it back. nodemon would
+# sit on "app crashed - waiting for file changes" with the container still
+# "running". Use `yarn dev` for live reload while developing.
 CMD ["yarn", "start"]

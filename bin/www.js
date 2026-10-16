@@ -190,11 +190,19 @@ MongoClient.connect(process.env.MONGODB_URI, {
     passport.use(strategy);
 
     app.post("/login", (req, res) => {
+      // bcrypt.compareSync throws on a missing password, and inside this
+      // .then that throw is an unhandled rejection that takes the process down.
+      if (typeof req.body.password !== "string" || !req.body.password) {
+        return res.status(400).json({ message: "Falta la contraseña." });
+      }
       db.collection("users")
         .findOne({ email: req.body.email })
         .then((results) => {
           if (!!results) {
-            if (bcrypt.compareSync(req.body.password, results.password)) {
+            if (
+              typeof results.password === "string" &&
+              bcrypt.compareSync(req.body.password, results.password)
+            ) {
               var payload = { _id: results._id };
               var token = jwt.sign(payload, jwtOptions.secretOrKey);
               res.json({ message: "ok", token: token, user: results });
